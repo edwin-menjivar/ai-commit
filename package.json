@@ -1,0 +1,21 @@
+{
+  "name": "ai-commit",
+  "version": "1.0.0",
+  "main": "dist/bin/ai-commit.js",
+  "bin": {
+    "ai-commit": "./dist/bin/ai-commit.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/bin/ai-commit.js"
+  },
+  "dependencies": {
+    "commander": "^11.1.0",
+    "dotenv": "^16.4.5",
+    "openai": "^4.47.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.5",
+    "typescript": "^5.4.3"
+  }
+}

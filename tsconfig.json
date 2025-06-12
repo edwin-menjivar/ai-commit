@@ -1,0 +1,16 @@
+{
+  // AI Commit Tool - TypeScript Configuration
+  // Author: Edwin Menjivar
+  // Copyright © 2024 Edwin Menjivar
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "rootDir": "./",
+    "outDir": "./dist",
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
+    "skipLibCheck": true
+  },
+  "include": ["bin/**/*", "lib/**/*"]
+}
