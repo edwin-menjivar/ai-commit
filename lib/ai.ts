@@ -8,8 +8,11 @@
 
 import OpenAI from 'openai';
 import * as dotenv from 'dotenv';
+import * as path from 'path';
 
-dotenv.config();
+// Load .env from the ai-commit tool directory, not current working directory
+// This is necessary because the .env file is in the root directory of the project
+dotenv.config({ path: path.join(__dirname, '..', '..', '.env') });
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
