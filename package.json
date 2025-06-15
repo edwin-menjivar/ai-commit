@@ -1,21 +1,49 @@
 {
   "name": "ai-commit",
   "version": "1.0.0",
+  "description": "AI-powered Git workflow assistant",
   "main": "dist/bin/ai-commit.js",
   "bin": {
     "ai-commit": "./dist/bin/ai-commit.js"
   },
   "scripts": {
     "build": "tsc",
-    "start": "node dist/bin/ai-commit.js"
+    "start": "node dist/bin/ai-commit.js",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
   },
+  "keywords": [
+    "git",
+    "ai",
+    "commit",
+    "openai",
+    "cli"
+  ],
+  "author": "Edwin Menjivar",
+  "license": "MIT",
   "dependencies": {
     "commander": "^11.1.0",
     "dotenv": "^16.4.5",
     "openai": "^4.47.1"
   },
   "devDependencies": {
+    "@types/jest": "^29.5.8",
     "@types/node": "^20.12.5",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.1",
     "typescript": "^5.4.3"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "collectCoverageFrom": [
+      "lib/**/*.ts",
+      "bin/**/*.ts",
+      "!**/*.d.ts"
+    ],
+    "testMatch": [
+      "**/__tests__/**/*.test.ts"
+    ]
   }
 }
