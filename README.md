@@ -44,6 +44,8 @@ OPENAI_MODEL=gpt-4
 OPENAI_API_BASE=https://api.openai.com/v1
 ```
 
+You can also override the model for a single run using the `--model <model>` flag on the CLI. If neither the flag nor the environment variable is set, the default is `gpt-3.5-turbo`.
+
 ⚠️ **Important**: Never commit your `.env` file to version control. It's already included in `.gitignore`.
 
 ---
@@ -93,6 +95,8 @@ git add .
 ai-commit
 # or explicitly:
 ai-commit commit
+# Use a specific model (overrides .env for this run)
+ai-commit --model gpt-4
 ```
 
 ### 📝 AI Pull Request Descriptions
@@ -105,6 +109,8 @@ git checkout feature/new-login-system
 
 # Generate PR description
 ai-commit pr
+# Use a specific model for PR description
+aio-commit pr --model gpt-3.5-turbo
 ```
 
 The tool will:
@@ -127,6 +133,8 @@ git add .
 
 # Get AI code review
 ai-commit review
+# Use a specific model for code review
+ai-commit review --model gpt-4
 ```
 
 The AI will analyze your code for:
@@ -142,9 +150,11 @@ The AI will analyze your code for:
 ```bash
 ai-commit                # Generate commit message (default)
 ai-commit commit         # Generate commit message  
-ai-commit pr            # Generate pull request description
-ai-commit review        # AI code review of staged changes
-ai-commit help          # Show help message
+ai-commit pr             # Generate pull request description
+ai-commit review         # AI code review of staged changes
+ai-commit help           # Show help message
+ai-commit --model gpt-4  # Use GPT-4 for commit message
+ai-commit pr --model gpt-3.5-turbo # Use GPT-3.5 for PR description
 ```
 
 ---
@@ -198,12 +208,18 @@ git add .
 
 # 3. Get AI code review before committing
 ai-commit review
+# Or with a specific model
+ai-commit review --model gpt-4
 
 # 4. Generate and commit with AI message
 ai-commit commit
+# Or with a specific model
+ai-commit commit --model gpt-4
 
 # 5. When ready for PR, generate description
 ai-commit pr
+# Or with a specific model
+ai-commit pr --model gpt-3.5-turbo
 ```
 
 ### Code Review Integration
@@ -212,6 +228,8 @@ ai-commit pr
 # Before any commit, get AI feedback
 git add .
 ai-commit review
+# Or with a specific model
+ai-commit review --model gpt-4
 
 # Fix any issues, then commit
 ai-commit commit
