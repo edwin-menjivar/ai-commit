@@ -1,14 +1,16 @@
-# AI Commit
+# AI Git Assistant
 
-Automatically generate meaningful, conventional Git commit messages using OpenAI or a local LLM.
+Automatically generate meaningful Git commit messages, pull request descriptions, and perform AI-powered code reviews using OpenAI or a local LLM.
 
 ## ✨ Features
 
-* Parses staged git diffs
-* Generates clear, conventional commit messages (e.g., `feat: add login route`)
-* Supports editing before finalizing the commit
-* Works with OpenAI API or local LLM (planned)
-* Easily extendable for editors, Git hooks, CI, or plugins
+* **AI Commit Messages**: Generates clear, conventional commit messages (e.g., `feat: add login route`)
+* **AI Pull Request Descriptions**: Creates comprehensive PR descriptions from branch commits and changes
+* **AI Code Reviews**: Performs thorough code analysis before commits to catch bugs, security issues, and style problems
+* **Interactive Workflows**: Edit and customize all AI-generated content before finalizing
+* **Multiple Commands**: `commit`, `pr`, `review` - each optimized for different parts of your Git workflow
+* **Privacy-Focused**: Works with OpenAI API or local LLM (planned)
+* **Extensible**: Easily adaptable for Git hooks, CI, or editor plugins
 
 ---
 
@@ -79,19 +81,71 @@ This allows you to use `ai-commit` as a global command.
 
 ## ✅ Usage
 
-### Step 1: Stage your changes
+### 🤖 AI Commit Messages (Default)
+
+Generate AI-powered commit messages for staged changes:
 
 ```bash
+# Stage your changes
 git add .
+
+# Generate and commit with AI message
+ai-commit
+# or explicitly:
+ai-commit commit
 ```
 
-### Step 2: Run the tool
+### 📝 AI Pull Request Descriptions
+
+Generate comprehensive PR descriptions from your branch commits:
 
 ```bash
-ai-commit
+# Make sure you're on a feature branch with commits
+git checkout feature/new-login-system
+
+# Generate PR description
+ai-commit pr
 ```
 
-### Step 3: Approve or edit the suggested message, then commit
+The tool will:
+- Analyze all commits in your branch vs main/master
+- Review the full diff of changes
+- Generate a structured PR description with:
+  - Clear title and summary
+  - Key features/fixes implemented
+  - Breaking changes (if any)
+  - Testing notes
+- Save to a `.md` file for easy copy-paste to GitHub/GitLab
+
+### 🔍 AI Code Review
+
+Get AI-powered code review before committing:
+
+```bash
+# Stage the changes you want reviewed
+git add .
+
+# Get AI code review
+ai-commit review
+```
+
+The AI will analyze your code for:
+- **Code Quality**: Best practices, readability, maintainability
+- **Potential Bugs**: Logic errors, edge cases, null checks  
+- **Security**: Vulnerabilities, data validation, injection risks
+- **Performance**: Inefficient operations, memory usage
+- **Style**: Consistency, naming conventions
+- **Architecture**: Design patterns, separation of concerns
+
+### 📋 Command Reference
+
+```bash
+ai-commit                # Generate commit message (default)
+ai-commit commit         # Generate commit message  
+ai-commit pr            # Generate pull request description
+ai-commit review        # AI code review of staged changes
+ai-commit help          # Show help message
+```
 
 ---
 
@@ -113,11 +167,13 @@ npm unlink -g ai-commit   # Remove global link
 ```
 ai-commit/
 ├── bin/              # CLI entry point
-│   └── ai-commit.ts
+│   └── ai-commit.ts  # Main CLI with subcommand support
 ├── lib/              # Functional modules
-│   ├── git.ts        # Git diff & commit logic
-│   ├── ai.ts         # OpenAI communication
-│   └── formatter.ts  # Message formatting & editing
+│   ├── git.ts        # Git operations (diff, commits, branches)
+│   ├── ai.ts         # OpenAI communication (commit, PR, review)
+│   ├── formatter.ts  # User interaction & file output
+│   ├── pr.ts         # Pull request description generation
+│   └── review.ts     # Code review functionality
 ├── dist/             # Compiled output
 ├── .env              # API credentials (not committed)
 ├── .gitignore
@@ -125,6 +181,40 @@ ai-commit/
 ├── README.md
 ├── package.json
 └── tsconfig.json
+```
+
+---
+
+## 🎯 Workflow Examples
+
+### Feature Development Workflow
+
+```bash
+# 1. Create and switch to feature branch
+git checkout -b feat/user-authentication
+
+# 2. Make your changes and stage them
+git add .
+
+# 3. Get AI code review before committing
+ai-commit review
+
+# 4. Generate and commit with AI message
+ai-commit commit
+
+# 5. When ready for PR, generate description
+ai-commit pr
+```
+
+### Code Review Integration
+
+```bash
+# Before any commit, get AI feedback
+git add .
+ai-commit review
+
+# Fix any issues, then commit
+ai-commit commit
 ```
 
 ---
@@ -146,7 +236,10 @@ Feel free to submit issues or pull requests. Contributions are welcome!
 ## 💡 Future Improvements
 
 * Add support for local LLMs via Ollama
-* Multi-line commit messages and summaries
-* Git hook installer
+* Git hook installer for automatic code review
 * VSCode or JetBrains plugin
-* Plugin system for formatting rules, ticket prepending, etc.
+* Team configuration sharing
+* Custom prompt templates
+* Integration with issue trackers (Jira, Linear)
+* Automated changelog generation
+* Multi-language commit message support
