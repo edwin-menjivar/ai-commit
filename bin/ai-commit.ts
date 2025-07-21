@@ -14,12 +14,32 @@ import { confirmCommitMessage } from '../lib/formatter';
 import { generatePRDescription } from '../lib/pr';
 import { performCodeReview } from '../lib/review';
 
+const parseArgs = () => {
+  // Simple manual parsing for --model <model>
+  const args = process.argv.slice(2);
+  let command = 'commit';
+  let model: string | undefined;
+  const otherArgs: string[] = [];
+
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--model' && args[i + 1]) {
+      model = args[i + 1];
+      i++;
+    } else if (['commit', 'pr', 'review', 'help', '--help', '-h'].includes(args[i])) {
+      command = args[i];
+    } else {
+      otherArgs.push(args[i]);
+    }
+  }
+  return { command, model, otherArgs };
+};
+
 const showHelp = () => {
   console.log(`
 🤖 AI Git Assistant
 
 Usage:
-  ai-commit [command]
+  ai-commit [command] [--model <model>]
 
 Commands:
   commit (default)  Generate AI-powered commit message for staged changes
@@ -27,11 +47,16 @@ Commands:
   review           AI code review of staged changes before commit
   help             Show this help message
 
+Options:
+  --model <model>  Specify the OpenAI model to use (overrides env)
+
 Examples:
-  ai-commit              # Generate commit message (default)
-  ai-commit commit       # Generate commit message
-  ai-commit pr           # Generate PR description
-  ai-commit review       # Review staged changes
+  ai-commit                      # Generate commit message (default)
+  ai-commit commit               # Generate commit message
+  ai-commit pr                   # Generate PR description
+  ai-commit review               # Review staged changes
+  ai-commit --model gpt-4        # Use GPT-4 for commit message
+  ai-commit pr --model gpt-3.5-turbo # Use GPT-3.5 for PR description
 `);
 };
 
@@ -73,7 +98,10 @@ const runReview = async () => {
 };
 
 (async () => {
-  const command = process.argv[2] || 'commit';
+  const { command, model } = parseArgs();
+  if (model) {
+    process.env.OPENAI_MODEL = model;
+  }
 
   switch (command) {
     case 'commit':
