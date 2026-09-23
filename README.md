@@ -10,6 +10,7 @@ Automatically generate meaningful Git commit messages, pull request descriptions
 * **Interactive Workflows**: Edit and customize all AI-generated content before finalizing
 * **AI Branch Names**: Suggests conventional branch names based on your working changes
 * **Multiple Commands**: `commit`, `pr`, `review`, `branch` - each optimized for different parts of your Git workflow
+* **Secret Redaction**: Credentials are stripped from diffs before they are sent to any model
 * **Privacy-Focused**: Works with the OpenAI API or any OpenAI-compatible server (Ollama, LM Studio, vLLM)
 * **Extensible**: Easily adaptable for Git hooks, CI, or editor plugins
 
@@ -46,6 +47,30 @@ OPENAI_API_BASE=https://api.openai.com/v1
 ```
 
 You can also override the model for a single run using the `--model <model>` flag on the CLI. If neither the flag nor the environment variable is set, the default is `gpt-3.5-turbo`.
+
+### Secret redaction
+
+Diffs are sent to a third-party API, so anything resembling a credential is replaced with `[REDACTED]`
+before the request leaves your machine. This covers provider tokens (OpenAI, GitHub, AWS, Google, Slack,
+Stripe), JWTs, private key blocks, credentials embedded in URLs, and `KEY=value` assignments whose name
+looks secret-ish. The tool also warns when the diff touches files that usually hold credentials
+(`.env`, `id_rsa`, `*.pem`, `credentials.json`, ...).
+
+```bash
+$ ai-commit commit          # with a staged .env
+⚠️  The diff touches files that usually hold credentials: .env
+   Their contents are redacted before sending, but consider unstaging them.
+🔒 Redacted 2 possible secrets before sending the diff.
+```
+
+Redaction is pattern-based and cannot catch everything, so treat it as a safety net rather than a
+guarantee — avoid staging secrets in the first place. To disable it, set `AI_COMMIT_DISABLE_REDACTION=1`.
+
+### Where generated files go
+
+`ai-commit pr` and `ai-commit review` write their output to `.git/ai-commit/` rather than the working
+tree, so a later `git add .` can never sweep them into a commit. The full path is printed when a file
+is saved.
 
 ### Using a local LLM
 
@@ -214,6 +239,7 @@ ai-commit/
 │   └── ai-commit.ts  # Main CLI with subcommand support
 ├── lib/              # Functional modules
 │   ├── git.ts        # Git operations (diff, commits, branches)
+│   ├── redact.ts     # Strips secrets out of diffs before sending
 │   ├── ai.ts         # OpenAI communication (commit, PR, review, branch)
 │   ├── formatter.ts  # User interaction & file output
 │   ├── prompt.ts     # Promise-based readline helpers
