@@ -424,6 +424,80 @@ describe('AI Module', () => {
     });
   });
 
+  describe('secret redaction', () => {
+    const getPrompt = (): string => mockChatCompletions.create.mock.calls[0][0].messages[0].content;
+    let warn: jest.SpyInstance;
+
+    beforeEach(() => {
+      warn = jest.spyOn(console, 'warn').mockImplementation();
+      mockChatCompletions.create.mockResolvedValue({
+        choices: [{ message: { content: 'feat: x' } }]
+      });
+    });
+
+    afterEach(() => {
+      warn.mockRestore();
+      delete process.env.AI_COMMIT_DISABLE_REDACTION;
+    });
+
+    const secretDiff = [
+      'diff --git a/.env b/.env',
+      '--- a/.env',
+      '+++ b/.env',
+      '+OPENAI_API_KEY=sk-abcdefghijklmnopqrstuvwxyz0123456789'
+    ].join('\n');
+
+    it('should not send a secret to the API', async () => {
+      await generateCommitMessage(secretDiff);
+
+      expect(getPrompt()).not.toContain('sk-abcdefghijklmnopqrstuvwxyz0123456789');
+      expect(getPrompt()).toContain('[REDACTED]');
+    });
+
+    it('should warn that a secret was redacted', async () => {
+      await generateCommitMessage(secretDiff);
+
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('Redacted'));
+    });
+
+    it('should warn about files that usually hold credentials', async () => {
+      await generateCommitMessage(secretDiff);
+
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('.env'));
+    });
+
+    it('should redact for reviews, PR descriptions and branch names too', async () => {
+      await performCodeReview(secretDiff);
+
+      expect(getPrompt()).not.toContain('sk-abcdefghijklmnopqrstuvwxyz0123456789');
+    });
+
+    it('should leave an ordinary diff untouched', async () => {
+      await generateCommitMessage('diff --git a/a.ts b/a.ts\n+const total = 1;');
+
+      expect(getPrompt()).toContain('const total = 1;');
+      expect(getPrompt()).not.toContain('[REDACTED]');
+    });
+
+    it('should allow opting out, with a warning', async () => {
+      process.env.AI_COMMIT_DISABLE_REDACTION = '1';
+
+      await generateCommitMessage(secretDiff);
+
+      expect(getPrompt()).toContain('sk-abcdefghijklmnopqrstuvwxyz0123456789');
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('redaction is disabled'));
+    });
+
+    it('should redact before truncating so secrets cannot survive in the kept portion', async () => {
+      const secret = 'sk-abcdefghijklmnopqrstuvwxyz0123456789';
+      const huge = `+API_KEY=${secret}\n` + 'x'.repeat(200_000);
+
+      await generateCommitMessage(huge);
+
+      expect(getPrompt()).not.toContain(secret);
+    });
+  });
+
   describe('malformed responses', () => {
     it('should return an empty string when the response has no choices', async () => {
       mockChatCompletions.create.mockResolvedValue({ choices: [] });

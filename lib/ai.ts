@@ -10,6 +10,7 @@ import OpenAI from 'openai';
 import * as dotenv from 'dotenv';
 import * as fs from 'fs';
 import * as path from 'path';
+import { redactSecrets, findSensitivePaths } from './redact';
 
 // Models reject oversized requests outright, so trim very large diffs rather
 // than letting the whole command fail on a big branch.
@@ -81,6 +82,38 @@ const truncateDiff = (diff: string): string => {
   return `${diff.slice(0, MAX_DIFF_CHARS)}\n\n[diff truncated: ${omitted} more characters omitted]`;
 };
 
+/** True unless the user has explicitly opted out of redaction. */
+const redactionEnabled = (): boolean => process.env.AI_COMMIT_DISABLE_REDACTION !== '1';
+
+/**
+ * Strip credentials, then trim to size.
+ *
+ * Diffs are sent to a third-party API, so anything that looks like a secret is
+ * replaced first. Redaction runs before truncation so a secret can never be
+ * carried along in the kept portion of an oversized diff.
+ */
+const prepareDiff = (diff: string): string => {
+  if (!redactionEnabled()) {
+    console.warn('⚠️  Secret redaction is disabled (AI_COMMIT_DISABLE_REDACTION=1).');
+    return truncateDiff(diff);
+  }
+
+  const sensitive = findSensitivePaths(diff);
+  if (sensitive.length > 0) {
+    console.warn(
+      `⚠️  The diff touches files that usually hold credentials: ${sensitive.join(', ')}\n` +
+        '   Their contents are redacted before sending, but consider unstaging them.'
+    );
+  }
+
+  const { text, count } = redactSecrets(diff);
+  if (count > 0) {
+    console.warn(`🔒 Redacted ${count} possible secret${count === 1 ? '' : 's'} before sending the diff.`);
+  }
+
+  return truncateDiff(text);
+};
+
 /** Send a prompt and return the trimmed text of the first choice. */
 const complete = async (prompt: string, options: { temperature: number; maxTokens: number }): Promise<string> => {
   const response = await getClient().chat.completions.create({
@@ -102,7 +135,7 @@ Examples:
 - docs(readme): update installation instructions
 
 Git diff:
-${truncateDiff(diff)}`;
+${prepareDiff(diff)}`;
 
   return complete(prompt, { temperature: 0.7, maxTokens: 100 });
 };
@@ -116,7 +149,7 @@ Commits in this branch:
 ${commits}
 
 Full diff:
-${truncateDiff(diff)}
+${prepareDiff(diff)}
 
 Please create a well-structured PR description with:
 1. A clear title
@@ -144,7 +177,7 @@ Provide specific, actionable feedback with line references when possible.
 If the code looks good, mention the positive aspects.
 
 Git diff:
-${truncateDiff(diff)}
+${prepareDiff(diff)}
 
 Please structure your review with clear sections and be constructive in your feedback.`;
 
@@ -163,7 +196,7 @@ Rules:
 - Be descriptive but brief
 
 Git diff:
-${truncateDiff(diff)}
+${prepareDiff(diff)}
 
 Return exactly 3 branch name suggestions, one per line, with no numbering or bullets. Just the branch names.`;
 
