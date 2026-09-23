@@ -12,11 +12,12 @@ const mockedReadline = readline as jest.Mocked<typeof readline>;
 /** Stub readline so the next question resolves with `answer`. */
 const answerWith = (answer: string) => {
   const close = jest.fn();
+  const on = jest.fn();
   const question = jest.fn().mockImplementation((_q: string, cb: (a: string) => void) => cb(answer));
 
-  mockedReadline.createInterface.mockReturnValue({ question, close } as never);
+  mockedReadline.createInterface.mockReturnValue({ question, close, on } as never);
 
-  return { question, close };
+  return { question, close, on };
 };
 
 describe('Prompt Helpers', () => {
@@ -54,6 +55,39 @@ describe('Prompt Helpers', () => {
     });
   });
 
+  describe('end of input', () => {
+    /** Stub readline so the interface closes without an answer, as piped stdin does. */
+    const closeWithoutAnswer = () => {
+      const handlers: Record<string, () => void> = {};
+      mockedReadline.createInterface.mockReturnValue({
+        question: jest.fn(),
+        close: jest.fn(),
+        on: jest.fn().mockImplementation((event: string, cb: () => void) => {
+          handlers[event] = cb;
+        }),
+      } as never);
+      return handlers;
+    };
+
+    it('should resolve null when stdin closes before an answer', async () => {
+      const handlers = closeWithoutAnswer();
+
+      const pending = ask('Question? ');
+      handlers.close();
+
+      await expect(pending).resolves.toBeNull();
+    });
+
+    it('should treat end of input as no', async () => {
+      const handlers = closeWithoutAnswer();
+
+      const pending = confirm('Sure? ');
+      handlers.close();
+
+      await expect(pending).resolves.toBe(false);
+    });
+  });
+
   describe('confirm', () => {
     it.each(['y', 'Y', 'yes', 'YES', ' yes '])('should treat %p as yes', async (answer) => {
       answerWith(answer);
@@ -74,6 +108,7 @@ describe('Prompt Helpers', () => {
           respond = cb;
         }),
         close: jest.fn(),
+        on: jest.fn(),
       } as never);
 
       let settled = false;

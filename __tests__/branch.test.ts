@@ -121,6 +121,7 @@ describe('Branch Module', () => {
           questionCallback = callback;
         }),
         close: jest.fn(),
+        on: jest.fn(),
       });
 
       const suggestPromise = branchModule.suggestBranchName();
@@ -145,6 +146,7 @@ describe('Branch Module', () => {
       mockReadline.createInterface = jest.fn().mockReturnValue({
         question: jest.fn().mockImplementation((_prompt: string, cb: (a: string) => void) => cb('y')),
         close: jest.fn(),
+        on: jest.fn(),
       });
 
       await branchModule.suggestBranchName();
@@ -165,6 +167,7 @@ describe('Branch Module', () => {
           respond = cb;
         }),
         close: jest.fn(),
+        on: jest.fn(),
       });
 
       let settled = false;
@@ -193,6 +196,7 @@ describe('Branch Module', () => {
       mockReadline.createInterface = jest.fn().mockReturnValue({
         question: jest.fn().mockImplementation((_prompt: string, cb: (a: string) => void) => cb('y')),
         close: jest.fn(),
+        on: jest.fn(),
       });
 
       await branchModule.suggestBranchName();

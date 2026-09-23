@@ -128,6 +128,18 @@ export const checkoutBranch = (branchName: string): void => {
   gitInherit(['checkout', branchName]);
 };
 
+/**
+ * Absolute path to the repository's .git directory.
+ *
+ * Generated output goes in here rather than the working tree: the tool runs in
+ * other people's repositories, where we cannot add anything to their
+ * .gitignore, and files written to the working tree get picked up by a
+ * subsequent `git add .`.
+ */
+export const getGitDir = (): string => {
+  return git(['rev-parse', '--absolute-git-dir']).trim();
+};
+
 export const branchExists = (branchName: string): boolean => {
   return refExists(`refs/heads/${branchName}`) || refExists(`refs/remotes/origin/${branchName}`);
 };

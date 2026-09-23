@@ -127,6 +127,10 @@ export const runCommit = async () => {
 
     const finalMessage = await confirmCommitMessage(aiMessage);
 
+    if (finalMessage === null) {
+      return; // User declined to commit.
+    }
+
     commitChanges(finalMessage);
   } catch (error) {
     fail(error);

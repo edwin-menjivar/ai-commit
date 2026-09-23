@@ -185,6 +185,14 @@ describe('CLI', () => {
       expect(mockProcessExit).toHaveBeenCalledWith(1);
     });
 
+    it('should not commit when the user declines', async () => {
+      mockFormatter.confirmCommitMessage.mockResolvedValue(null);
+
+      await runCommit();
+
+      expect(mockGit.commitChanges).not.toHaveBeenCalled();
+    });
+
     it('should report a readable message when the commit itself fails', async () => {
       mockGit.commitChanges.mockImplementation(() => {
         throw new Error('nothing to commit');

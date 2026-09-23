@@ -9,45 +9,60 @@
 import * as readline from 'readline';
 import * as fs from 'fs';
 import * as path from 'path';
+import { getGitDir } from './git';
+import { ask } from './prompt';
 
-export const confirmCommitMessage = (message: string): Promise<string> => {
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
+// Guards against an unrecognised answer looping forever on a non-interactive stdin.
+const MAX_PROMPT_ATTEMPTS = 3;
 
-  return new Promise((resolve) => {
-    console.log(`\n🤖 Generated commit message:`);
-    console.log(`   "${message}"\n`);
-    
-    rl.question(`Accept this message? (y/n) or type a new message: `, (answer) => {
-      rl.close();
-      
-      const trimmedAnswer = answer.trim().toLowerCase();
-      
-      // Accept the message
-      if (trimmedAnswer === '' || trimmedAnswer === 'y' || trimmedAnswer === 'yes') {
-        resolve(message);
+/**
+ * Confirm, replace, or abandon the generated message.
+ *
+ * Returns null when the user declines to commit. The prompt used to treat any
+ * unrecognised answer as the commit message itself, so replying "no thanks"
+ * committed a message reading "no thanks"; the choices are now explicit.
+ */
+export const confirmCommitMessage = async (message: string): Promise<string | null> => {
+  console.log(`\n🤖 Generated commit message:`);
+  console.log(`   "${message}"\n`);
+
+  for (let attempt = 0; attempt < MAX_PROMPT_ATTEMPTS; attempt++) {
+    const response = await ask('Accept this message? [Y]es / [n]o, write my own / [q]uit: ');
+
+    if (response === null) {
+      console.log('No input available. Commit cancelled.');
+      return null;
+    }
+
+    const answer = response.trim().toLowerCase();
+
+    if (answer === '' || answer === 'y' || answer === 'yes') {
+      return message;
+    }
+
+    if (answer === 'q' || answer === 'quit') {
+      console.log('Commit cancelled.');
+      return null;
+    }
+
+    if (answer === 'n' || answer === 'no') {
+      console.log('Please provide your commit message:');
+      const replacement = (await ask('> '))?.trim();
+
+      if (!replacement) {
+        // Falling back to the message they just rejected would be the wrong default.
+        console.log('No message provided. Commit cancelled.');
+        return null;
       }
-      // Reject and ask for new message
-      else if (trimmedAnswer === 'n' || trimmedAnswer === 'no') {
-        console.log('Please provide your commit message:');
-        const editRl = readline.createInterface({
-          input: process.stdin,
-          output: process.stdout,
-        });
-        
-        editRl.question('> ', (newMessage) => {
-          editRl.close();
-          resolve(newMessage.trim() || message);
-        });
-      }
-      // User provided a custom message directly
-      else {
-        resolve(answer.trim());
-      }
-    });
-  });
+
+      return replacement;
+    }
+
+    console.log(`Please answer y, n, or q.`);
+  }
+
+  console.log('No valid response. Commit cancelled.');
+  return null;
 };
 
 export const confirmPRDescription = async (description: string, branchName: string): Promise<void> => {
@@ -109,43 +124,48 @@ export const displayCodeReview = async (review: string): Promise<void> => {
   });
 };
 
-const savePRDescription = async (description: string, branchName: string): Promise<void> => {
-  const filename = `pr-description-${branchName.replace(/[^a-zA-Z0-9]/g, '-')}.md`;
-  const filepath = path.join(process.cwd(), filename);
-  
+/**
+ * Resolve an output path inside .git/ai-commit, creating the directory.
+ *
+ * Falls back to the working directory only if the .git directory cannot be
+ * located, so the output is never simply lost.
+ */
+const resolveOutputPath = (filename: string): string => {
   try {
-    fs.writeFileSync(filepath, description);
-    console.log(`✅ PR description saved to: ${filename}`);
-  } catch (error) {
-    console.error(`❌ Failed to save PR description: ${error}`);
+    const outputDir = path.join(getGitDir(), 'ai-commit');
+    fs.mkdirSync(outputDir, { recursive: true });
+    return path.join(outputDir, filename);
+  } catch {
+    return path.join(process.cwd(), filename);
   }
+};
+
+const writeOutput = (filename: string, contents: string, label: string): void => {
+  const filepath = resolveOutputPath(filename);
+
+  try {
+    fs.writeFileSync(filepath, contents);
+    console.log(`✅ ${label} saved to: ${filepath}`);
+  } catch (error) {
+    console.error(`❌ Failed to save ${label}: ${error instanceof Error ? error.message : error}`);
+  }
+};
+
+const prDescriptionFilename = (branchName: string): string =>
+  `pr-description-${branchName.replace(/[^a-zA-Z0-9]/g, '-')}.md`;
+
+const savePRDescription = async (description: string, branchName: string): Promise<void> => {
+  writeOutput(prDescriptionFilename(branchName), description, 'PR description');
 };
 
 const saveCodeReview = async (review: string): Promise<void> => {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const filename = `code-review-${timestamp}.md`;
-  const filepath = path.join(process.cwd(), filename);
-  
-  try {
-    fs.writeFileSync(filepath, review);
-    console.log(`✅ Code review saved to: ${filename}`);
-  } catch (error) {
-    console.error(`❌ Failed to save code review: ${error}`);
-  }
+  writeOutput(`code-review-${timestamp}.md`, review, 'Code review');
 };
 
 const editPRDescription = async (description: string, branchName: string): Promise<void> => {
-  const filename = `pr-description-${branchName.replace(/[^a-zA-Z0-9]/g, '-')}.md`;
-  const filepath = path.join(process.cwd(), filename);
-  
-  try {
-    // Save to temp file for editing
-    fs.writeFileSync(filepath, description);
-    console.log(`📝 PR description saved to: ${filename}`);
-    console.log('Edit the file and run the command again if needed.');
-  } catch (error) {
-    console.error(`❌ Failed to save PR description for editing: ${error}`);
-  }
+  writeOutput(prDescriptionFilename(branchName), description, 'PR description');
+  console.log('Open the file above to edit it.');
 };
 
 export const selectBranchName = async (suggestions: string[]): Promise<string | null> => {
