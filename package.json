@@ -6,12 +6,22 @@
   "bin": {
     "ai-commit": "./dist/bin/ai-commit.js"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "build": "tsc",
+    "typecheck": "tsc --noEmit",
     "start": "node dist/bin/ai-commit.js",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build"
   },
   "keywords": [
     "git",
@@ -23,7 +33,6 @@
   "author": "Edwin Menjivar",
   "license": "MIT",
   "dependencies": {
-    "commander": "^11.1.0",
     "dotenv": "^16.4.5",
     "openai": "^4.47.1"
   },

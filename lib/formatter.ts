@@ -147,3 +147,48 @@ const editPRDescription = async (description: string, branchName: string): Promi
     console.error(`❌ Failed to save PR description for editing: ${error}`);
   }
 };
+
+export const selectBranchName = async (suggestions: string[]): Promise<string | null> => {
+  console.log(`\n🤖 Suggested branch names based on your changes:\n`);
+  
+  suggestions.forEach((suggestion, index) => {
+    console.log(`   ${index + 1}. ${suggestion}`);
+  });
+  
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  return new Promise((resolve) => {
+    rl.question(`\nSelect a branch name (1-${suggestions.length}) or type your own (or 'q' to quit): `, (answer) => {
+      rl.close();
+      
+      const trimmedAnswer = answer.trim();
+      
+      // Quit
+      if (trimmedAnswer.toLowerCase() === 'q' || trimmedAnswer.toLowerCase() === 'quit') {
+        console.log('Branch creation cancelled.');
+        resolve(null);
+        return;
+      }
+      
+      // Check if it's a number selection
+      const selection = parseInt(trimmedAnswer, 10);
+      if (!isNaN(selection) && selection >= 1 && selection <= suggestions.length) {
+        resolve(suggestions[selection - 1]);
+        return;
+      }
+      
+      // User provided custom branch name
+      if (trimmedAnswer.length > 0) {
+        resolve(trimmedAnswer);
+        return;
+      }
+      
+      // Empty input - cancel
+      console.log('Branch creation cancelled.');
+      resolve(null);
+    });
+  });
+};

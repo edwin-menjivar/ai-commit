@@ -8,8 +8,9 @@ Automatically generate meaningful Git commit messages, pull request descriptions
 * **AI Pull Request Descriptions**: Creates comprehensive PR descriptions from branch commits and changes
 * **AI Code Reviews**: Performs thorough code analysis before commits to catch bugs, security issues, and style problems
 * **Interactive Workflows**: Edit and customize all AI-generated content before finalizing
-* **Multiple Commands**: `commit`, `pr`, `review` - each optimized for different parts of your Git workflow
-* **Privacy-Focused**: Works with OpenAI API or local LLM (planned)
+* **AI Branch Names**: Suggests conventional branch names based on your working changes
+* **Multiple Commands**: `commit`, `pr`, `review`, `branch` - each optimized for different parts of your Git workflow
+* **Privacy-Focused**: Works with the OpenAI API or any OpenAI-compatible server (Ollama, LM Studio, vLLM)
 * **Extensible**: Easily adaptable for Git hooks, CI, or editor plugins
 
 ---
@@ -22,10 +23,10 @@ Before installation, you'll need an OpenAI API key:
 
 1. **Get your API key** from: [OpenAI Platform](https://platform.openai.com/account/api-keys)
 
-2. **Create a `.env` file** in your project root:
+2. **Create a `.env` file** in the project root by copying the template:
 
 ```bash
-touch .env
+cp .env.example .env
 ```
 
 3. **Add your API key** to the `.env` file:
@@ -46,6 +47,17 @@ OPENAI_API_BASE=https://api.openai.com/v1
 
 You can also override the model for a single run using the `--model <model>` flag on the CLI. If neither the flag nor the environment variable is set, the default is `gpt-3.5-turbo`.
 
+### Using a local LLM
+
+`OPENAI_API_BASE` points the tool at any server that speaks the OpenAI chat-completions API, so your diffs never leave your machine:
+
+```env
+# Ollama
+OPENAI_API_BASE=http://localhost:11434/v1
+OPENAI_MODEL=llama3
+OPENAI_API_KEY=ollama   # required by the client, but unused by Ollama
+```
+
 ⚠️ **Important**: Never commit your `.env` file to version control. It's already included in `.gitignore`.
 
 ---
@@ -58,6 +70,8 @@ You can also override the model for a single run using the `--model <model>` fla
 git clone https://github.com/your-username/ai-commit.git
 cd ai-commit
 ```
+
+Requires Node.js 18 or newer.
 
 ### 2. Install dependencies
 
@@ -110,7 +124,7 @@ git checkout feature/new-login-system
 # Generate PR description
 ai-commit pr
 # Use a specific model for PR description
-aio-commit pr --model gpt-3.5-turbo
+ai-commit pr --model gpt-3.5-turbo
 ```
 
 The tool will:
@@ -145,14 +159,28 @@ The AI will analyze your code for:
 - **Style**: Consistency, naming conventions
 - **Architecture**: Design patterns, separation of concerns
 
+### 🌿 AI Branch Names
+
+Get conventional branch name suggestions from your current changes:
+
+```bash
+# Make some changes (staged or unstaged)
+ai-commit branch
+```
+
+The tool will suggest three conventional names (e.g. `feat/user-authentication`), let you pick one or
+type your own, and then create and switch to it. If the branch already exists, it offers to switch instead.
+
 ### 📋 Command Reference
 
 ```bash
 ai-commit                # Generate commit message (default)
-ai-commit commit         # Generate commit message  
+ai-commit commit         # Generate commit message
 ai-commit pr             # Generate pull request description
 ai-commit review         # AI code review of staged changes
+ai-commit branch         # Suggest branch names from your changes
 ai-commit help           # Show help message
+ai-commit --version      # Print the installed version
 ai-commit --model gpt-4  # Use GPT-4 for commit message
 ai-commit pr --model gpt-3.5-turbo # Use GPT-3.5 for PR description
 ```
@@ -165,10 +193,16 @@ Useful commands during development:
 
 ```bash
 npm run build        # Compile TypeScript into dist/
+npm run typecheck    # Type-check without emitting output
+npm test             # Run the test suite
+npm run test:watch   # Re-run tests on change
+npm run test:coverage # Run tests with a coverage report
 npm start            # Run the compiled version
 npm link             # Globally symlink CLI for development use
 npm unlink -g ai-commit   # Remove global link
 ```
+
+Every push and pull request runs typecheck, build and tests on Node 18, 20 and 22 via GitHub Actions.
 
 ---
 
@@ -180,12 +214,16 @@ ai-commit/
 │   └── ai-commit.ts  # Main CLI with subcommand support
 ├── lib/              # Functional modules
 │   ├── git.ts        # Git operations (diff, commits, branches)
-│   ├── ai.ts         # OpenAI communication (commit, PR, review)
+│   ├── ai.ts         # OpenAI communication (commit, PR, review, branch)
 │   ├── formatter.ts  # User interaction & file output
+│   ├── prompt.ts     # Promise-based readline helpers
 │   ├── pr.ts         # Pull request description generation
-│   └── review.ts     # Code review functionality
+│   ├── review.ts     # Code review functionality
+│   └── branch.ts     # Branch name suggestions
+├── __tests__/        # Jest test suite
 ├── dist/             # Compiled output
 ├── .env              # API credentials (not committed)
+├── .env.example      # Template for .env
 ├── .gitignore
 ├── LICENSE
 ├── README.md
@@ -253,7 +291,6 @@ Feel free to submit issues or pull requests. Contributions are welcome!
 
 ## 💡 Future Improvements
 
-* Add support for local LLMs via Ollama
 * Git hook installer for automatic code review
 * VSCode or JetBrains plugin
 * Team configuration sharing

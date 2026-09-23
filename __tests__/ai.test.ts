@@ -27,11 +27,16 @@ jest.mock('path', () => ({
   join: jest.fn().mockReturnValue('.env')
 }));
 
+import OpenAI from 'openai';
 import {
     generateCommitMessage,
     generatePRDescription,
-    performCodeReview
+    performCodeReview,
+    generateBranchNameSuggestions,
+    resetClient
 } from '../lib/ai';
+
+const MockedOpenAI = OpenAI as unknown as jest.Mock;
 
 describe('AI Module', () => {
   beforeEach(() => {
@@ -42,6 +47,8 @@ describe('AI Module', () => {
 
   afterEach(() => {
     jest.clearAllMocks();
+    resetClient();
+    delete process.env.OPENAI_API_BASE;
     delete process.env.OPENAI_API_KEY;
     delete process.env.OPENAI_MODEL;
   });
@@ -324,20 +331,118 @@ describe('AI Module', () => {
   });
 
   describe('OpenAI Configuration', () => {
-    it('should work with proper API key setup', () => {
-      // Test that the module can be imported without throwing
-      expect(process.env.OPENAI_API_KEY).toBe('test-api-key');
+    it('should not construct a client until a request is made', () => {
+      resetClient();
+      MockedOpenAI.mockClear();
+
+      // Importing and calling help-only paths must not require credentials.
+      expect(MockedOpenAI).not.toHaveBeenCalled();
     });
 
-    it('should handle missing API key gracefully', () => {
+    it('should throw an actionable error when the API key is missing', async () => {
+      resetClient();
       delete process.env.OPENAI_API_KEY;
-      
-      // Re-import should still work
-      jest.resetModules();
-      
-      expect(() => {
-        require('../lib/ai');
-      }).not.toThrow();
+
+      await expect(generateCommitMessage('diff')).rejects.toThrow(/OPENAI_API_KEY is not set/);
+    });
+
+    it('should pass the API key to the client', async () => {
+      resetClient();
+      MockedOpenAI.mockClear();
+      mockChatCompletions.create.mockResolvedValue({
+        choices: [{ message: { content: 'feat: x' } }]
+      });
+
+      await generateCommitMessage('diff');
+
+      expect(MockedOpenAI).toHaveBeenCalledWith(
+        expect.objectContaining({ apiKey: 'test-api-key' })
+      );
+    });
+
+    it('should honour OPENAI_API_BASE for local or self-hosted models', async () => {
+      resetClient();
+      MockedOpenAI.mockClear();
+      process.env.OPENAI_API_BASE = 'http://localhost:11434/v1';
+      mockChatCompletions.create.mockResolvedValue({
+        choices: [{ message: { content: 'feat: x' } }]
+      });
+
+      await generateCommitMessage('diff');
+
+      expect(MockedOpenAI).toHaveBeenCalledWith(
+        expect.objectContaining({ baseURL: 'http://localhost:11434/v1' })
+      );
+    });
+
+    it('should reuse a single client across requests', async () => {
+      resetClient();
+      MockedOpenAI.mockClear();
+      mockChatCompletions.create.mockResolvedValue({
+        choices: [{ message: { content: 'feat: x' } }]
+      });
+
+      await generateCommitMessage('diff');
+      await generateCommitMessage('another diff');
+
+      expect(MockedOpenAI).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('large diffs', () => {
+    const getPrompt = (): string => mockChatCompletions.create.mock.calls[0][0].messages[0].content;
+
+    beforeEach(() => {
+      mockChatCompletions.create.mockResolvedValue({
+        choices: [{ message: { content: 'feat: x' } }]
+      });
+    });
+
+    it('should send small diffs unchanged', async () => {
+      await generateCommitMessage('a short diff');
+
+      expect(getPrompt()).toContain('a short diff');
+      expect(getPrompt()).not.toContain('diff truncated');
+    });
+
+    it('should truncate a diff that would exceed the model request size', async () => {
+      const huge = 'x'.repeat(200_000);
+
+      await generateCommitMessage(huge);
+
+      const prompt = getPrompt();
+      expect(prompt.length).toBeLessThan(huge.length);
+      expect(prompt).toContain('diff truncated');
+    });
+
+    it('should truncate for PR descriptions and reviews too', async () => {
+      const huge = 'x'.repeat(200_000);
+
+      await performCodeReview(huge);
+
+      expect(getPrompt()).toContain('diff truncated');
+    });
+  });
+
+  describe('malformed responses', () => {
+    it('should return an empty string when the response has no choices', async () => {
+      mockChatCompletions.create.mockResolvedValue({ choices: [] });
+
+      await expect(generateCommitMessage('diff')).resolves.toBe('');
+    });
+
+    it('should return an empty string when the message content is null', async () => {
+      mockChatCompletions.create.mockResolvedValue({
+        choices: [{ message: { content: null } }]
+      });
+
+      await expect(generateCommitMessage('diff')).resolves.toBe('');
+    });
+
+    it('should return no suggestions when branch naming yields nothing', async () => {
+      mockChatCompletions.create.mockResolvedValue({ choices: [] });
+
+      await expect(generateBranchNameSuggestions('diff')).resolves.toEqual([]);
     });
   });
 }); 

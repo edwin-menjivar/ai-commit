@@ -8,18 +8,89 @@
 
 import OpenAI from 'openai';
 import * as dotenv from 'dotenv';
+import * as fs from 'fs';
 import * as path from 'path';
 
-// Load .env from the ai-commit tool directory, not current working directory
-// This is necessary because the .env file is in the root directory of the project
-dotenv.config({ path: path.join(__dirname, '..', '..', '.env') });
+// Models reject oversized requests outright, so trim very large diffs rather
+// than letting the whole command fail on a big branch.
+const MAX_DIFF_CHARS = 48_000;
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// The .env may sit next to the compiled output (dist/lib -> repo root), next to
+// the sources when running from TypeScript, or in the directory the user ran
+// the command from. Load the first one that exists.
+const loadEnv = (): void => {
+  const candidates = [
+    path.join(__dirname, '..', '..', '.env'),
+    path.join(__dirname, '..', '.env'),
+    path.join(process.cwd(), '.env'),
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      dotenv.config({ path: candidate });
+      return;
+    }
+  }
+
+  dotenv.config();
+};
+
+loadEnv();
+
+let client: OpenAI | undefined;
+
+/**
+ * Build the OpenAI client on first use so that importing this module (in tests,
+ * or for `ai-commit help`) never requires credentials.
+ */
+const getClient = (): OpenAI => {
+  if (!client) {
+    const apiKey = process.env.OPENAI_API_KEY;
+
+    if (!apiKey) {
+      throw new Error(
+        'OPENAI_API_KEY is not set. Add it to a .env file in the project root or export it in your shell.\n' +
+          'Get a key at https://platform.openai.com/account/api-keys'
+      );
+    }
+
+    client = new OpenAI({
+      apiKey,
+      // Set OPENAI_API_BASE to point at a local or self-hosted OpenAI-compatible server.
+      baseURL: process.env.OPENAI_API_BASE || undefined,
+    });
+  }
+
+  return client;
+};
+
+/** Reset the memoized client. Exported for tests and for changing credentials at runtime. */
+export const resetClient = (): void => {
+  client = undefined;
+};
 
 const getModel = (): string => {
   return process.env.OPENAI_MODEL || 'gpt-3.5-turbo';
+};
+
+/** Trim a diff to a size the model will accept, noting that it was shortened. */
+const truncateDiff = (diff: string): string => {
+  if (diff.length <= MAX_DIFF_CHARS) return diff;
+
+  const omitted = diff.length - MAX_DIFF_CHARS;
+  return `${diff.slice(0, MAX_DIFF_CHARS)}\n\n[diff truncated: ${omitted} more characters omitted]`;
+};
+
+/** Send a prompt and return the trimmed text of the first choice. */
+const complete = async (prompt: string, options: { temperature: number; maxTokens: number }): Promise<string> => {
+  const response = await getClient().chat.completions.create({
+    model: getModel(),
+    messages: [{ role: 'user', content: prompt }],
+    temperature: options.temperature,
+    max_tokens: options.maxTokens,
+  });
+
+  return response.choices?.[0]?.message?.content?.trim() || '';
 };
 
 export const generateCommitMessage = async (diff: string): Promise<string> => {
@@ -31,16 +102,9 @@ Examples:
 - docs(readme): update installation instructions
 
 Git diff:
-${diff}`;
+${truncateDiff(diff)}`;
 
-  const response = await openai.chat.completions.create({
-    model: getModel(),
-    messages: [{ role: 'user', content: prompt }],
-    temperature: 0.7,
-    max_tokens: 100,
-  });
-
-  return response.choices[0].message.content?.trim() || '';
+  return complete(prompt, { temperature: 0.7, maxTokens: 100 });
 };
 
 export const generatePRDescription = async (commits: string, diff: string, branchName: string): Promise<string> => {
@@ -52,7 +116,7 @@ Commits in this branch:
 ${commits}
 
 Full diff:
-${diff}
+${truncateDiff(diff)}
 
 Please create a well-structured PR description with:
 1. A clear title
@@ -63,14 +127,7 @@ Please create a well-structured PR description with:
 
 Format it in Markdown and make it professional but concise.`;
 
-  const response = await openai.chat.completions.create({
-    model: getModel(),
-    messages: [{ role: 'user', content: prompt }],
-    temperature: 0.7,
-    max_tokens: 800,
-  });
-
-  return response.choices[0].message.content?.trim() || '';
+  return complete(prompt, { temperature: 0.7, maxTokens: 800 });
 };
 
 export const performCodeReview = async (diff: string): Promise<string> => {
@@ -87,16 +144,35 @@ Provide specific, actionable feedback with line references when possible.
 If the code looks good, mention the positive aspects.
 
 Git diff:
-${diff}
+${truncateDiff(diff)}
 
 Please structure your review with clear sections and be constructive in your feedback.`;
 
-  const response = await openai.chat.completions.create({
-    model: getModel(),
-    messages: [{ role: 'user', content: prompt }],
-    temperature: 0.3, // Lower temperature for more focused, consistent reviews
-    max_tokens: 1000,
-  });
+  // Lower temperature for more focused, consistent reviews
+  return complete(prompt, { temperature: 0.3, maxTokens: 1000 });
+};
 
-  return response.choices[0].message.content?.trim() || '';
+export const generateBranchNameSuggestions = async (diff: string): Promise<string[]> => {
+  const prompt = `Based on the following git diff, suggest 3 conventional branch names. 
+Follow the format: type/description (e.g., feat/user-authentication, fix/login-bug, docs/api-update).
+
+Rules:
+- Use lowercase letters and hyphens only
+- Keep names concise (2-4 words max)
+- Use conventional prefixes: feat, fix, docs, refactor, test, chore
+- Be descriptive but brief
+
+Git diff:
+${truncateDiff(diff)}
+
+Return exactly 3 branch name suggestions, one per line, with no numbering or bullets. Just the branch names.`;
+
+  const suggestions = await complete(prompt, { temperature: 0.7, maxTokens: 150 });
+
+  // Parse the suggestions - split by newlines and clean up
+  return suggestions
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line.length > 0)
+    .slice(0, 3); // Ensure we only return 3
 };
