@@ -2,7 +2,7 @@
  * Tests for Git Operations Module
  */
 
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import {
     getStagedDiff,
     commitChanges,
@@ -10,12 +10,36 @@ import {
     getMainBranch,
     getBranchCommits,
     getBranchDiff,
-    isGitRepository
+    isGitRepository,
+    getUnstagedDiff,
+    getAllChangesDiff,
+    createBranch,
+    checkoutBranch,
+    branchExists
 } from '../lib/git';
 
 // Mock child_process
 jest.mock('child_process');
-const mockedExecSync = execSync as jest.MockedFunction<typeof execSync>;
+const mockedExecFileSync = execFileSync as jest.MockedFunction<typeof execFileSync>;
+
+/** Resolve `git rev-parse --verify` calls against a set of refs that exist. */
+const withRefs = (refs: string[]) => (_cmd: string, args?: readonly string[]) => {
+  const argv = (args ?? []) as readonly string[];
+
+  if (argv[0] === 'rev-parse' && argv.includes('--verify')) {
+    const ref = argv[argv.length - 1].replace(/\^\{commit\}$/, '');
+    if (!refs.includes(ref)) {
+      throw new Error(`fatal: Needed a single revision: ${ref}`);
+    }
+    return Buffer.from('');
+  }
+
+  if (argv[0] === 'symbolic-ref') {
+    throw new Error('fatal: ref refs/remotes/origin/HEAD is not a symbolic ref');
+  }
+
+  return Buffer.from('');
+};
 
 describe('Git Operations', () => {
   afterEach(() => {
@@ -25,223 +49,394 @@ describe('Git Operations', () => {
   describe('getStagedDiff', () => {
     it('should return staged diff from git', () => {
       const mockDiff = 'diff --git a/file.txt b/file.txt\n+added line';
-      mockedExecSync.mockReturnValue(Buffer.from(mockDiff));
+      mockedExecFileSync.mockReturnValue(mockDiff);
 
       const result = getStagedDiff();
 
-      expect(mockedExecSync).toHaveBeenCalledWith('git diff --cached');
+      expect(mockedExecFileSync).toHaveBeenCalledWith(
+        'git',
+        ['diff', '--cached'],
+        expect.objectContaining({ encoding: 'utf8' })
+      );
       expect(result).toBe(mockDiff);
     });
 
     it('should return empty string when no staged changes', () => {
-      mockedExecSync.mockReturnValue(Buffer.from(''));
+      mockedExecFileSync.mockReturnValue('');
 
-      const result = getStagedDiff();
+      expect(getStagedDiff()).toBe('');
+    });
 
-      expect(result).toBe('');
+    it('should request a buffer large enough for branch-sized diffs', () => {
+      mockedExecFileSync.mockReturnValue('');
+
+      getStagedDiff();
+
+      const options = mockedExecFileSync.mock.calls[0][2] as { maxBuffer: number };
+      expect(options.maxBuffer).toBeGreaterThan(1024 * 1024);
     });
   });
 
   describe('commitChanges', () => {
     it('should commit with provided message', () => {
-      const message = 'feat: add new feature';
-      mockedExecSync.mockReturnValue(Buffer.from(''));
+      mockedExecFileSync.mockReturnValue('');
 
-      commitChanges(message);
+      commitChanges('feat: add new feature');
 
-      expect(mockedExecSync).toHaveBeenCalledWith(
-        `git commit -m "${message}"`,
+      expect(mockedExecFileSync).toHaveBeenCalledWith(
+        'git',
+        ['commit', '-m', 'feat: add new feature'],
         { stdio: 'inherit' }
       );
     });
 
-    it('should handle messages with special characters', () => {
-      const message = 'fix: resolve "issue" with $variable';
-      mockedExecSync.mockReturnValue(Buffer.from(''));
+    it('should pass shell metacharacters through as literal text', () => {
+      mockedExecFileSync.mockReturnValue('');
 
+      const message = 'fix(api): handle `null` and $(whoami) in "quoted" input';
       commitChanges(message);
 
-      expect(mockedExecSync).toHaveBeenCalledWith(
-        `git commit -m "${message}"`,
+      // The message is an argv entry, so the shell never sees these characters.
+      expect(mockedExecFileSync).toHaveBeenCalledWith(
+        'git',
+        ['commit', '-m', message],
+        { stdio: 'inherit' }
+      );
+    });
+
+    it('should preserve multi-line commit messages', () => {
+      mockedExecFileSync.mockReturnValue('');
+
+      const message = 'feat: add thing\n\nA longer body explaining why.';
+      commitChanges(message);
+
+      expect(mockedExecFileSync).toHaveBeenCalledWith(
+        'git',
+        ['commit', '-m', message],
         { stdio: 'inherit' }
       );
     });
   });
 
   describe('getCurrentBranch', () => {
-    it('should return current branch name', () => {
-      mockedExecSync.mockReturnValue(Buffer.from('feature/new-feature\n'));
+    it('should return the current branch name', () => {
+      mockedExecFileSync.mockReturnValue('feature/new-feature\n');
 
-      const result = getCurrentBranch();
-
-      expect(mockedExecSync).toHaveBeenCalledWith('git branch --show-current');
-      expect(result).toBe('feature/new-feature');
+      expect(getCurrentBranch()).toBe('feature/new-feature');
+      expect(mockedExecFileSync).toHaveBeenCalledWith(
+        'git',
+        ['branch', '--show-current'],
+        expect.objectContaining({ encoding: 'utf8' })
+      );
     });
 
-    it('should handle branch names with whitespace', () => {
-      mockedExecSync.mockReturnValue(Buffer.from('  main  \n'));
+    it('should trim surrounding whitespace', () => {
+      mockedExecFileSync.mockReturnValue('  main  \n');
 
-      const result = getCurrentBranch();
-
-      expect(result).toBe('main');
+      expect(getCurrentBranch()).toBe('main');
     });
   });
 
   describe('getMainBranch', () => {
-    it('should return "main" when origin/main exists', () => {
-      mockedExecSync.mockReturnValue(Buffer.from('origin/main\norigin/feature'));
+    it('should use origin/HEAD when the remote advertises a default branch', () => {
+      mockedExecFileSync.mockImplementation(((_cmd: string, args?: readonly string[]) => {
+        if ((args ?? [])[0] === 'symbolic-ref') return 'origin/trunk\n';
+        throw new Error('unexpected call');
+      }) as never);
 
-      const result = getMainBranch();
-
-      expect(result).toBe('main');
+      expect(getMainBranch()).toBe('trunk');
     });
 
-    it('should return "master" when origin/master exists but not main', () => {
-      mockedExecSync.mockReturnValue(Buffer.from('origin/master\norigin/feature'));
+    it('should detect origin/main', () => {
+      mockedExecFileSync.mockImplementation(withRefs(['refs/remotes/origin/main']) as never);
 
-      const result = getMainBranch();
-
-      expect(result).toBe('master');
+      expect(getMainBranch()).toBe('main');
     });
 
-    it('should return "develop" when origin/develop exists but not main/master', () => {
-      mockedExecSync.mockReturnValue(Buffer.from('origin/develop\norigin/feature'));
+    it('should detect origin/master', () => {
+      mockedExecFileSync.mockImplementation(withRefs(['refs/remotes/origin/master']) as never);
 
-      const result = getMainBranch();
-
-      expect(result).toBe('develop');
+      expect(getMainBranch()).toBe('master');
     });
 
-    it('should fallback to "main" when git command fails', () => {
-      mockedExecSync.mockImplementation(() => {
-        throw new Error('Git error');
-      });
+    it('should detect origin/develop', () => {
+      mockedExecFileSync.mockImplementation(withRefs(['refs/remotes/origin/develop']) as never);
 
-      const result = getMainBranch();
-
-      expect(result).toBe('main');
+      expect(getMainBranch()).toBe('develop');
     });
 
-    it('should fallback to "main" when no known branches found', () => {
-      mockedExecSync.mockReturnValue(Buffer.from('origin/feature\norigin/bugfix'));
+    it('should not mistake origin/maintenance for origin/main', () => {
+      // Substring matching against `git branch -r` output would wrongly match here.
+      mockedExecFileSync.mockImplementation(
+        withRefs(['refs/remotes/origin/maintenance', 'refs/remotes/origin/master']) as never
+      );
 
-      const result = getMainBranch();
+      expect(getMainBranch()).toBe('master');
+    });
 
-      expect(result).toBe('main');
+    it('should fall back to a local branch when there is no remote', () => {
+      mockedExecFileSync.mockImplementation(withRefs(['refs/heads/master']) as never);
+
+      expect(getMainBranch()).toBe('master');
+    });
+
+    it('should prefer a remote branch over a local one', () => {
+      mockedExecFileSync.mockImplementation(
+        withRefs(['refs/remotes/origin/develop', 'refs/heads/master']) as never
+      );
+
+      expect(getMainBranch()).toBe('develop');
+    });
+
+    it('should default to main when nothing matches', () => {
+      mockedExecFileSync.mockImplementation(withRefs([]) as never);
+
+      expect(getMainBranch()).toBe('main');
     });
   });
 
   describe('getBranchCommits', () => {
-    it('should return commits between main and current branch', () => {
-      mockedExecSync
-        .mockReturnValueOnce(Buffer.from('feature-branch\n')) // getCurrentBranch
-        .mockReturnValueOnce(Buffer.from('origin/main\n'))    // getMainBranch (git branch -r)
-        .mockReturnValueOnce(Buffer.from('abc123 feat: add feature\ndef456 fix: bug fix\n')); // git log
+    it('should get commits between main and current branch', () => {
+      mockedExecFileSync.mockImplementation(((_cmd: string, args?: readonly string[]) => {
+        const argv = (args ?? []) as readonly string[];
+        if (argv[0] === 'branch' && argv[1] === '--show-current') return 'feature-branch\n';
+        if (argv[0] === 'symbolic-ref') return 'origin/main\n';
+        if (argv[0] === 'log') return 'abc123 feat: add feature\ndef456 fix: bug fix\n';
+        throw new Error('unexpected call');
+      }) as never);
 
       const result = getBranchCommits();
 
-      expect(mockedExecSync).toHaveBeenCalledWith('git branch --show-current');
-      expect(mockedExecSync).toHaveBeenCalledWith('git branch -r');
-      expect(mockedExecSync).toHaveBeenCalledWith('git log main..feature-branch --oneline');
-      expect(result).toBe('abc123 feat: add feature\ndef456 fix: bug fix\n');
+      expect(mockedExecFileSync).toHaveBeenCalledWith(
+        'git',
+        ['log', 'main..feature-branch', '--oneline'],
+        expect.objectContaining({ encoding: 'utf8' })
+      );
+      expect(result).toContain('abc123');
     });
 
-    it('should use provided branch name when specified', () => {
-      mockedExecSync
-        .mockReturnValueOnce(Buffer.from('origin/main\n'))    // getMainBranch
-        .mockReturnValueOnce(Buffer.from('xyz789 docs: update readme\n')); // git log
+    it('should use an explicitly provided branch', () => {
+      mockedExecFileSync.mockImplementation(((_cmd: string, args?: readonly string[]) => {
+        const argv = (args ?? []) as readonly string[];
+        if (argv[0] === 'branch') throw new Error('should not ask for the current branch');
+        if (argv[0] === 'symbolic-ref') return 'origin/main\n';
+        return 'xyz789 docs: update readme\n';
+      }) as never);
 
-      const result = getBranchCommits('custom-branch');
+      getBranchCommits('custom-branch');
 
-      expect(mockedExecSync).not.toHaveBeenCalledWith('git branch --show-current');
-      expect(mockedExecSync).toHaveBeenCalledWith('git log main..custom-branch --oneline');
-      expect(result).toBe('xyz789 docs: update readme\n');
+      expect(mockedExecFileSync).toHaveBeenCalledWith(
+        'git',
+        ['log', 'main..custom-branch', '--oneline'],
+        expect.objectContaining({ encoding: 'utf8' })
+      );
     });
 
-    it('should fallback to recent commits when branch comparison fails', () => {
-      mockedExecSync
-        .mockReturnValueOnce(Buffer.from('feature-branch\n')) // getCurrentBranch
-        .mockReturnValueOnce(Buffer.from('origin/main\n'))    // getMainBranch
-        .mockImplementationOnce(() => {                        // git log fails
-          throw new Error('Git error');
-        })
-        .mockReturnValueOnce(Buffer.from('recent commits\n')); // fallback
+    it('should fall back to recent commits when the comparison fails', () => {
+      mockedExecFileSync.mockImplementation(((_cmd: string, args?: readonly string[]) => {
+        const argv = (args ?? []) as readonly string[];
+        if (argv[0] === 'branch' && argv[1] === '--show-current') return 'feature-branch\n';
+        if (argv[0] === 'symbolic-ref') return 'origin/main\n';
+        if (argv[0] === 'log' && argv[1] === 'main..feature-branch') {
+          throw new Error('unknown revision');
+        }
+        return 'recent commits\n';
+      }) as never);
 
       const result = getBranchCommits();
 
-      expect(mockedExecSync).toHaveBeenCalledWith('git log --oneline -10');
+      expect(mockedExecFileSync).toHaveBeenCalledWith(
+        'git',
+        ['log', '--oneline', '-10'],
+        expect.objectContaining({ encoding: 'utf8' })
+      );
       expect(result).toBe('recent commits\n');
     });
   });
 
   describe('getBranchDiff', () => {
-    it('should return diff between main and current branch', () => {
-      mockedExecSync
-        .mockReturnValueOnce(Buffer.from('feature-branch\n')) // getCurrentBranch
-        .mockReturnValueOnce(Buffer.from('origin/main\n'))    // getMainBranch
-        .mockReturnValueOnce(Buffer.from('diff content\n'));   // git diff
+    it('should diff main against the current branch', () => {
+      mockedExecFileSync.mockImplementation(((_cmd: string, args?: readonly string[]) => {
+        const argv = (args ?? []) as readonly string[];
+        if (argv[0] === 'branch' && argv[1] === '--show-current') return 'feature-branch\n';
+        if (argv[0] === 'symbolic-ref') return 'origin/main\n';
+        return 'diff content\n';
+      }) as never);
+
+      getBranchDiff();
+
+      expect(mockedExecFileSync).toHaveBeenCalledWith(
+        'git',
+        ['diff', 'main...feature-branch'],
+        expect.objectContaining({ encoding: 'utf8' })
+      );
+    });
+
+    it('should use an explicitly provided branch', () => {
+      mockedExecFileSync.mockImplementation(((_cmd: string, args?: readonly string[]) => {
+        const argv = (args ?? []) as readonly string[];
+        if (argv[0] === 'symbolic-ref') return 'origin/main\n';
+        return 'custom diff\n';
+      }) as never);
+
+      getBranchDiff('custom-branch');
+
+      expect(mockedExecFileSync).toHaveBeenCalledWith(
+        'git',
+        ['diff', 'main...custom-branch'],
+        expect.objectContaining({ encoding: 'utf8' })
+      );
+    });
+
+    it('should fall back to recent changes when the comparison fails', () => {
+      mockedExecFileSync.mockImplementation(((_cmd: string, args?: readonly string[]) => {
+        const argv = (args ?? []) as readonly string[];
+        if (argv[0] === 'branch' && argv[1] === '--show-current') return 'feature-branch\n';
+        if (argv[0] === 'symbolic-ref') return 'origin/main\n';
+        if (argv[0] === 'diff' && argv[1] === 'main...feature-branch') {
+          throw new Error('unknown revision');
+        }
+        return 'fallback diff\n';
+      }) as never);
 
       const result = getBranchDiff();
 
-      expect(mockedExecSync).toHaveBeenCalledWith('git diff main...feature-branch');
-      expect(result).toBe('diff content\n');
-    });
-
-    it('should use provided branch name when specified', () => {
-      mockedExecSync
-        .mockReturnValueOnce(Buffer.from('origin/main\n'))    // getMainBranch
-        .mockReturnValueOnce(Buffer.from('custom diff\n'));   // git diff
-
-      const result = getBranchDiff('custom-branch');
-
-      expect(mockedExecSync).toHaveBeenCalledWith('git diff main...custom-branch');
-      expect(result).toBe('custom diff\n');
-    });
-
-    it('should fallback to recent changes when branch diff fails', () => {
-      mockedExecSync
-        .mockReturnValueOnce(Buffer.from('feature-branch\n')) // getCurrentBranch
-        .mockReturnValueOnce(Buffer.from('origin/main\n'))    // getMainBranch
-        .mockImplementationOnce(() => {                        // git diff fails
-          throw new Error('Git error');
-        })
-        .mockReturnValueOnce(Buffer.from('fallback diff\n')); // fallback
-
-      const result = getBranchDiff();
-
-      expect(mockedExecSync).toHaveBeenCalledWith('git diff HEAD~5..HEAD');
+      expect(mockedExecFileSync).toHaveBeenCalledWith(
+        'git',
+        ['diff', 'HEAD~5..HEAD'],
+        expect.objectContaining({ encoding: 'utf8' })
+      );
       expect(result).toBe('fallback diff\n');
     });
   });
 
   describe('isGitRepository', () => {
-    it('should return true when in a git repository', () => {
-      mockedExecSync.mockReturnValueOnce(Buffer.from('.git\n'));
+    it('should return true inside a repository', () => {
+      mockedExecFileSync.mockReturnValue('.git\n');
 
-      const result = isGitRepository();
-
-      expect(mockedExecSync).toHaveBeenCalledWith('git rev-parse --git-dir', { stdio: 'ignore' });
-      expect(result).toBe(true);
+      expect(isGitRepository()).toBe(true);
+      expect(mockedExecFileSync).toHaveBeenCalledWith(
+        'git',
+        ['rev-parse', '--git-dir'],
+        { stdio: 'ignore' }
+      );
     });
 
-    it('should return false when not in a git repository', () => {
-      mockedExecSync.mockImplementationOnce(() => {
-        throw new Error('Not a git repository');
+    it('should return false outside a repository', () => {
+      mockedExecFileSync.mockImplementation(() => {
+        throw new Error('not a git repository');
       });
 
-      const result = isGitRepository();
-
-      expect(result).toBe(false);
-    });
-
-    it('should return false when git command fails', () => {
-      mockedExecSync.mockImplementationOnce(() => {
-        throw new Error('Git not found');
-      });
-
-      const result = isGitRepository();
-
-      expect(result).toBe(false);
+      expect(isGitRepository()).toBe(false);
     });
   });
-}); 
+
+  describe('getUnstagedDiff', () => {
+    it('should return the unstaged diff', () => {
+      mockedExecFileSync.mockReturnValue('unstaged changes');
+
+      expect(getUnstagedDiff()).toBe('unstaged changes');
+      expect(mockedExecFileSync).toHaveBeenCalledWith(
+        'git',
+        ['diff'],
+        expect.objectContaining({ encoding: 'utf8' })
+      );
+    });
+
+    it('should return empty string when there are none', () => {
+      mockedExecFileSync.mockReturnValue('');
+
+      expect(getUnstagedDiff()).toBe('');
+    });
+  });
+
+  describe('getAllChangesDiff', () => {
+    it('should combine staged and unstaged diffs', () => {
+      mockedExecFileSync
+        .mockReturnValueOnce('staged changes')
+        .mockReturnValueOnce('unstaged changes');
+
+      const result = getAllChangesDiff();
+
+      expect(result).toBe('staged changes\nunstaged changes');
+      expect(mockedExecFileSync).toHaveBeenCalledWith(
+        'git',
+        ['diff', '--cached'],
+        expect.objectContaining({ encoding: 'utf8' })
+      );
+      expect(mockedExecFileSync).toHaveBeenCalledWith(
+        'git',
+        ['diff'],
+        expect.objectContaining({ encoding: 'utf8' })
+      );
+    });
+  });
+
+  describe('createBranch', () => {
+    it('should create and switch to the branch', () => {
+      mockedExecFileSync.mockReturnValue('');
+
+      createBranch('feat/new-thing');
+
+      expect(mockedExecFileSync).toHaveBeenCalledWith(
+        'git',
+        ['checkout', '-b', 'feat/new-thing'],
+        { stdio: 'inherit' }
+      );
+    });
+
+    it('should not let a crafted branch name reach the shell', () => {
+      mockedExecFileSync.mockReturnValue('');
+
+      const name = 'feat/x;rm -rf /';
+      createBranch(name);
+
+      expect(mockedExecFileSync).toHaveBeenCalledWith(
+        'git',
+        ['checkout', '-b', name],
+        { stdio: 'inherit' }
+      );
+    });
+  });
+
+  describe('checkoutBranch', () => {
+    it('should switch to an existing branch', () => {
+      mockedExecFileSync.mockReturnValue('');
+
+      checkoutBranch('feat/existing');
+
+      expect(mockedExecFileSync).toHaveBeenCalledWith(
+        'git',
+        ['checkout', 'feat/existing'],
+        { stdio: 'inherit' }
+      );
+    });
+  });
+
+  describe('branchExists', () => {
+    it('should return true for a local branch', () => {
+      mockedExecFileSync.mockImplementation(withRefs(['refs/heads/feature-branch']) as never);
+
+      expect(branchExists('feature-branch')).toBe(true);
+    });
+
+    it('should return true for a remote branch', () => {
+      mockedExecFileSync.mockImplementation(withRefs(['refs/remotes/origin/feature-branch']) as never);
+
+      expect(branchExists('feature-branch')).toBe(true);
+    });
+
+    it('should return false when the branch is absent', () => {
+      mockedExecFileSync.mockImplementation(withRefs(['refs/heads/main']) as never);
+
+      expect(branchExists('feature-branch')).toBe(false);
+    });
+
+    it('should not report a match for a branch that is merely a prefix', () => {
+      // `git branch --list` substring matching would wrongly report true here.
+      mockedExecFileSync.mockImplementation(withRefs(['refs/heads/feat/login-page']) as never);
+
+      expect(branchExists('feat/login')).toBe(false);
+    });
+  });
+});
