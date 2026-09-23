@@ -34,6 +34,7 @@ const mockProcessExit = jest.spyOn(process, 'exit').mockImplementation();
 
 describe('CLI', () => {
   beforeEach(() => {
+    mockGit.isGitRepository.mockReturnValue(true);
     mockGit.getStagedDiff.mockReturnValue('diff --git a/file.js b/file.js\n+test');
     mockAi.generateCommitMessage.mockResolvedValue('feat: add test');
     mockFormatter.confirmCommitMessage.mockResolvedValue('feat: add test');
@@ -227,6 +228,27 @@ describe('CLI', () => {
 
       expect(mockConsoleLog).toHaveBeenCalled();
       expect(mockPr.generatePRDescription).not.toHaveBeenCalled();
+    });
+
+    it.each(['commit', 'pr', 'review', 'branch'] as const)(
+      'should refuse to run %s outside a git repository',
+      async (command) => {
+        mockGit.isGitRepository.mockReturnValue(false);
+
+        await run(command);
+
+        expect(mockConsoleError).toHaveBeenCalledWith('❌ Not in a git repository');
+        expect(mockProcessExit).toHaveBeenCalledWith(1);
+      }
+    );
+
+    it('should still show help outside a git repository', async () => {
+      mockGit.isGitRepository.mockReturnValue(false);
+
+      await run('help');
+
+      expect(mockConsoleLog).toHaveBeenCalled();
+      expect(mockProcessExit).not.toHaveBeenCalled();
     });
 
     it('should propagate errors from a subcommand', async () => {

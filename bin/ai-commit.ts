@@ -8,7 +8,7 @@
  * @description CLI tool that automatically generates AI-powered commit messages and assists with git workflow
  */
 
-import { getStagedDiff, commitChanges } from '../lib/git';
+import { getStagedDiff, commitChanges, isGitRepository } from '../lib/git';
 import { generateCommitMessage } from '../lib/ai';
 import { confirmCommitMessage } from '../lib/formatter';
 import { generatePRDescription } from '../lib/pr';
@@ -133,7 +133,16 @@ export const runCommit = async () => {
   }
 };
 
+// help and --version are the only things that work outside a repository.
+const REQUIRES_REPOSITORY: Command[] = ['commit', 'pr', 'review', 'branch'];
+
 export const run = async (command: Command): Promise<void> => {
+  if (REQUIRES_REPOSITORY.includes(command) && !isGitRepository()) {
+    console.error('❌ Not in a git repository');
+    process.exit(1);
+    return; // Explicit return for testing environments where process.exit is mocked
+  }
+
   switch (command) {
     case 'commit':
       return runCommit();
