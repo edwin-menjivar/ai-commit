@@ -50,7 +50,12 @@ describe('CLI', () => {
 
   describe('parseArgs', () => {
     it('should default to the commit command', () => {
-      expect(parseArgs([])).toEqual({ command: 'commit', model: undefined, print: false, showVersion: false });
+      expect(parseArgs([])).toEqual({
+        command: 'commit',
+        model: undefined,
+        print: false,
+        showVersion: false,
+      });
     });
 
     it.each(['commit', 'pr', 'review', 'branch', 'help'])('should parse the %s command', (cmd) => {

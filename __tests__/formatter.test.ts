@@ -5,11 +5,7 @@
 import * as readline from 'readline';
 import * as fs from 'fs';
 import * as gitModule from '../lib/git';
-import {
-    confirmCommitMessage,
-    confirmPRDescription,
-    displayCodeReview
-} from '../lib/formatter';
+import { confirmCommitMessage, confirmPRDescription, displayCodeReview } from '../lib/formatter';
 
 // Mock readline
 jest.mock('readline');
@@ -42,13 +38,13 @@ describe('Formatter Module', () => {
     mockRlInterface = {
       question: jest.fn(),
       close: jest.fn(),
-      on: jest.fn()
+      on: jest.fn(),
     };
 
     mockReadline.createInterface.mockReturnValue(mockRlInterface as any);
 
     mockGit.getGitDir.mockReturnValue(GIT_DIR);
-    
+
     // Mock process.cwd()
     jest.spyOn(process, 'cwd').mockReturnValue('/current/directory');
   });
@@ -60,10 +56,12 @@ describe('Formatter Module', () => {
   describe('confirmCommitMessage', () => {
     it('should accept message when user types "y"', async () => {
       const testMessage = 'feat: add new feature';
-      
-      mockRlInterface.question.mockImplementationOnce((_prompt: string, callback: (answer: string) => void) => {
-        callback('y');
-      });
+
+      mockRlInterface.question.mockImplementationOnce(
+        (_prompt: string, callback: (answer: string) => void) => {
+          callback('y');
+        }
+      );
 
       const result = await confirmCommitMessage(testMessage);
 
@@ -75,10 +73,12 @@ describe('Formatter Module', () => {
 
     it('should accept message when user types "yes"', async () => {
       const testMessage = 'fix: resolve bug';
-      
-      mockRlInterface.question.mockImplementationOnce((_prompt: string, callback: (answer: string) => void) => {
-        callback('yes');
-      });
+
+      mockRlInterface.question.mockImplementationOnce(
+        (_prompt: string, callback: (answer: string) => void) => {
+          callback('yes');
+        }
+      );
 
       const result = await confirmCommitMessage(testMessage);
 
@@ -87,10 +87,12 @@ describe('Formatter Module', () => {
 
     it('should accept message when user presses enter (empty input)', async () => {
       const testMessage = 'docs: update readme';
-      
-      mockRlInterface.question.mockImplementationOnce((_prompt: string, callback: (answer: string) => void) => {
-        callback('');
-      });
+
+      mockRlInterface.question.mockImplementationOnce(
+        (_prompt: string, callback: (answer: string) => void) => {
+          callback('');
+        }
+      );
 
       const result = await confirmCommitMessage(testMessage);
 
@@ -100,7 +102,7 @@ describe('Formatter Module', () => {
     it('should prompt for new message when user types "n"', async () => {
       const testMessage = 'original message';
       const newMessage = 'custom message';
-      
+
       mockRlInterface.question
         .mockImplementationOnce((_prompt: string, callback: (answer: string) => void) => {
           callback('n');
@@ -118,7 +120,7 @@ describe('Formatter Module', () => {
     it('should prompt for new message when user types "no"', async () => {
       const testMessage = 'original message';
       const newMessage = 'different message';
-      
+
       mockRlInterface.question
         .mockImplementationOnce((_prompt: string, callback: (answer: string) => void) => {
           callback('no');
@@ -193,10 +195,12 @@ describe('Formatter Module', () => {
     it('should save PR description when user types "y"', async () => {
       const description = '# Feature\n\nAdded new functionality';
       const branchName = 'feature/new-feature';
-      
-      mockRlInterface.question.mockImplementationOnce((_prompt: string, callback: (answer: string) => void) => {
-        callback('y');
-      });
+
+      mockRlInterface.question.mockImplementationOnce(
+        (_prompt: string, callback: (answer: string) => void) => {
+          callback('y');
+        }
+      );
 
       await confirmPRDescription(description, branchName);
 
@@ -215,10 +219,12 @@ describe('Formatter Module', () => {
     it('should save PR description when user types "yes"', async () => {
       const description = 'PR content';
       const branchName = 'feature/test';
-      
-      mockRlInterface.question.mockImplementationOnce((_prompt: string, callback: (answer: string) => void) => {
-        callback('yes');
-      });
+
+      mockRlInterface.question.mockImplementationOnce(
+        (_prompt: string, callback: (answer: string) => void) => {
+          callback('yes');
+        }
+      );
 
       await confirmPRDescription(description, branchName);
 
@@ -228,10 +234,12 @@ describe('Formatter Module', () => {
     it('should save PR description when user presses enter', async () => {
       const description = 'PR content';
       const branchName = 'feature/test';
-      
-      mockRlInterface.question.mockImplementationOnce((_prompt: string, callback: (answer: string) => void) => {
-        callback('');
-      });
+
+      mockRlInterface.question.mockImplementationOnce(
+        (_prompt: string, callback: (answer: string) => void) => {
+          callback('');
+        }
+      );
 
       await confirmPRDescription(description, branchName);
 
@@ -241,10 +249,12 @@ describe('Formatter Module', () => {
     it('should create edit file when user types "edit"', async () => {
       const description = 'PR content';
       const branchName = 'feature/test';
-      
-      mockRlInterface.question.mockImplementationOnce((_prompt: string, callback: (answer: string) => void) => {
-        callback('edit');
-      });
+
+      mockRlInterface.question.mockImplementationOnce(
+        (_prompt: string, callback: (answer: string) => void) => {
+          callback('edit');
+        }
+      );
 
       await confirmPRDescription(description, branchName);
 
@@ -261,10 +271,12 @@ describe('Formatter Module', () => {
     it('should not save when user types "n"', async () => {
       const description = 'PR content';
       const branchName = 'feature/test';
-      
-      mockRlInterface.question.mockImplementationOnce((_prompt: string, callback: (answer: string) => void) => {
-        callback('n');
-      });
+
+      mockRlInterface.question.mockImplementationOnce(
+        (_prompt: string, callback: (answer: string) => void) => {
+          callback('n');
+        }
+      );
 
       await confirmPRDescription(description, branchName);
 
@@ -275,10 +287,12 @@ describe('Formatter Module', () => {
     it('should handle file write errors', async () => {
       const description = 'PR content';
       const branchName = 'feature/test';
-      
-      mockRlInterface.question.mockImplementationOnce((_prompt: string, callback: (answer: string) => void) => {
-        callback('y');
-      });
+
+      mockRlInterface.question.mockImplementationOnce(
+        (_prompt: string, callback: (answer: string) => void) => {
+          callback('y');
+        }
+      );
 
       mockFs.writeFileSync.mockImplementationOnce(() => {
         throw new Error('Permission denied');
@@ -292,10 +306,12 @@ describe('Formatter Module', () => {
     it('should sanitize branch name for filename', async () => {
       const description = 'PR content';
       const branchName = 'feature/test-branch/with-slashes';
-      
-      mockRlInterface.question.mockImplementationOnce((_prompt: string, callback: (answer: string) => void) => {
-        callback('y');
-      });
+
+      mockRlInterface.question.mockImplementationOnce(
+        (_prompt: string, callback: (answer: string) => void) => {
+          callback('y');
+        }
+      );
 
       await confirmPRDescription(description, branchName);
 
@@ -309,10 +325,12 @@ describe('Formatter Module', () => {
   describe('displayCodeReview', () => {
     it('should display code review and save when user types "y"', async () => {
       const review = '## Code Review\n\nLooks good!';
-      
-      mockRlInterface.question.mockImplementationOnce((_prompt: string, callback: (answer: string) => void) => {
-        callback('y');
-      });
+
+      mockRlInterface.question.mockImplementationOnce(
+        (_prompt: string, callback: (answer: string) => void) => {
+          callback('y');
+        }
+      );
 
       // Mock date for consistent filename
       const mockDate = new Date('2023-01-01T12:00:00.000Z');
@@ -327,15 +345,19 @@ describe('Formatter Module', () => {
         `${OUT_DIR}/code-review-2023-01-01T12-00-00-000Z.md`,
         review
       );
-      expect(mockConsoleLog).toHaveBeenCalledWith(`✅ Code review saved to: ${OUT_DIR}/code-review-2023-01-01T12-00-00-000Z.md`);
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        `✅ Code review saved to: ${OUT_DIR}/code-review-2023-01-01T12-00-00-000Z.md`
+      );
     });
 
     it('should display code review and save when user types "yes"', async () => {
       const review = 'Review content';
-      
-      mockRlInterface.question.mockImplementationOnce((_prompt: string, callback: (answer: string) => void) => {
-        callback('yes');
-      });
+
+      mockRlInterface.question.mockImplementationOnce(
+        (_prompt: string, callback: (answer: string) => void) => {
+          callback('yes');
+        }
+      );
 
       await displayCodeReview(review);
 
@@ -344,10 +366,12 @@ describe('Formatter Module', () => {
 
     it('should not save when user types "n"', async () => {
       const review = 'Review content';
-      
-      mockRlInterface.question.mockImplementationOnce((_prompt: string, callback: (answer: string) => void) => {
-        callback('n');
-      });
+
+      mockRlInterface.question.mockImplementationOnce(
+        (_prompt: string, callback: (answer: string) => void) => {
+          callback('n');
+        }
+      );
 
       await displayCodeReview(review);
 
@@ -357,10 +381,12 @@ describe('Formatter Module', () => {
 
     it('should handle file write errors for code review', async () => {
       const review = 'Review content';
-      
-      mockRlInterface.question.mockImplementationOnce((_prompt: string, callback: (answer: string) => void) => {
-        callback('y');
-      });
+
+      mockRlInterface.question.mockImplementationOnce(
+        (_prompt: string, callback: (answer: string) => void) => {
+          callback('y');
+        }
+      );
 
       mockFs.writeFileSync.mockImplementationOnce(() => {
         throw new Error('Disk full');
@@ -373,16 +399,20 @@ describe('Formatter Module', () => {
 
     it('should generate unique timestamps for review filenames', async () => {
       const review = 'Review content';
-      
-      mockRlInterface.question.mockImplementationOnce((_prompt: string, callback: (answer: string) => void) => {
-        callback('y');
-      });
+
+      mockRlInterface.question.mockImplementationOnce(
+        (_prompt: string, callback: (answer: string) => void) => {
+          callback('y');
+        }
+      );
 
       await displayCodeReview(review);
 
       // Check that the filename follows the expected pattern
       expect(mockFs.writeFileSync).toHaveBeenCalledWith(
-        expect.stringMatching(/\/repo\/\.git\/ai-commit\/code-review-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z\.md$/),
+        expect.stringMatching(
+          /\/repo\/\.git\/ai-commit\/code-review-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z\.md$/
+        ),
         review
       );
     });
@@ -391,41 +421,47 @@ describe('Formatter Module', () => {
   describe('Readline interface management', () => {
     it('should create and close readline interface properly', async () => {
       const testMessage = 'test message';
-      
-      mockRlInterface.question.mockImplementationOnce((_prompt: string, callback: (answer: string) => void) => {
-        callback('y');
-      });
+
+      mockRlInterface.question.mockImplementationOnce(
+        (_prompt: string, callback: (answer: string) => void) => {
+          callback('y');
+        }
+      );
 
       await confirmCommitMessage(testMessage);
 
       expect(mockReadline.createInterface).toHaveBeenCalledWith({
         input: process.stdin,
-        output: process.stdout
+        output: process.stdout,
       });
       expect(mockRlInterface.close).toHaveBeenCalled();
     });
 
     it('should handle multiple readline interfaces for complex flows', async () => {
       const testMessage = 'test message';
-      
+
       // First interface for initial question
-      mockRlInterface.question.mockImplementationOnce((_prompt: string, callback: (answer: string) => void) => {
-        callback('n');
-      });
+      mockRlInterface.question.mockImplementationOnce(
+        (_prompt: string, callback: (answer: string) => void) => {
+          callback('n');
+        }
+      );
 
       // Second interface for new message
       const secondInterface = {
         question: jest.fn(),
-        close: jest.fn()
+        close: jest.fn(),
       };
-      
+
       mockReadline.createInterface
         .mockReturnValueOnce(mockRlInterface as any)
         .mockReturnValueOnce(secondInterface as any);
 
-      secondInterface.question.mockImplementationOnce((_prompt: string, callback: (answer: string) => void) => {
-        callback('new message');
-      });
+      secondInterface.question.mockImplementationOnce(
+        (_prompt: string, callback: (answer: string) => void) => {
+          callback('new message');
+        }
+      );
 
       const result = await confirmCommitMessage(testMessage);
 
@@ -435,4 +471,4 @@ describe('Formatter Module', () => {
       expect(result).toBe('new message');
     });
   });
-}); 
+});

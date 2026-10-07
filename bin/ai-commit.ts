@@ -2,12 +2,14 @@
 
 /**
  * AI Commit Tool - Main Entry Point
- * 
+ *
  * @author Edwin Menjivar
  * @copyright © 2024 Edwin Menjivar
  * @description CLI tool that automatically generates AI-powered commit messages and assists with git workflow
  */
 
+import * as fs from 'fs';
+import * as path from 'path';
 import { getStagedDiff, commitChanges, isGitRepository } from '../lib/git';
 import { generateCommitMessage } from '../lib/ai';
 import { confirmCommitMessage } from '../lib/formatter';
@@ -19,7 +21,8 @@ import { suggestBranchName } from '../lib/branch';
 const getVersion = (): string => {
   for (const candidate of ['../../package.json', '../package.json']) {
     try {
-      return require(candidate).version;
+      const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, candidate), 'utf8'));
+      if (typeof pkg.version === 'string') return pkg.version;
     } catch {
       // Try the next location.
     }

@@ -42,8 +42,12 @@ describe('Review Module', () => {
 
       expect(mockGit.isGitRepository).toHaveBeenCalled();
       expect(mockGit.getStagedDiff).toHaveBeenCalled();
-      expect(mockAi.performCodeReview).toHaveBeenCalledWith('diff --git a/file.js b/file.js\n+console.log("test");');
-      expect(mockFormatter.displayCodeReview).toHaveBeenCalledWith('## Code Review\n\nThe code looks good overall...');
+      expect(mockAi.performCodeReview).toHaveBeenCalledWith(
+        'diff --git a/file.js b/file.js\n+console.log("test");'
+      );
+      expect(mockFormatter.displayCodeReview).toHaveBeenCalledWith(
+        '## Code Review\n\nThe code looks good overall...'
+      );
     });
 
     it('should display analysis messages', async () => {
@@ -115,15 +119,16 @@ describe('Review Module', () => {
     });
 
     it('should pass exact diff to AI review', async () => {
-      const diff = 'diff --git a/src/app.js b/src/app.js\n' +
-                   'index 1234567..abcdefg 100644\n' +
-                   '--- a/src/app.js\n' +
-                   '+++ b/src/app.js\n' +
-                   '@@ -1,3 +1,4 @@\n' +
-                   ' const express = require("express");\n' +
-                   ' const app = express();\n' +
-                   '+app.use(express.json());\n' +
-                   ' module.exports = app;';
+      const diff =
+        'diff --git a/src/app.js b/src/app.js\n' +
+        'index 1234567..abcdefg 100644\n' +
+        '--- a/src/app.js\n' +
+        '+++ b/src/app.js\n' +
+        '@@ -1,3 +1,4 @@\n' +
+        ' const express = require("express");\n' +
+        ' const app = express();\n' +
+        '+app.use(express.json());\n' +
+        ' module.exports = app;';
 
       mockGit.getStagedDiff.mockReturnValue(diff);
 
@@ -133,11 +138,12 @@ describe('Review Module', () => {
     });
 
     it('should pass AI review result to formatter', async () => {
-      const reviewResult = '## Code Review Results\n\n' +
-                          '### Positive Aspects\n' +
-                          '- Good use of modern JavaScript\n\n' +
-                          '### Suggestions\n' +
-                          '- Consider adding error handling';
+      const reviewResult =
+        '## Code Review Results\n\n' +
+        '### Positive Aspects\n' +
+        '- Good use of modern JavaScript\n\n' +
+        '### Suggestions\n' +
+        '- Consider adding error handling';
 
       mockAi.performCodeReview.mockResolvedValue(reviewResult);
 
@@ -177,18 +183,20 @@ describe('Review Module', () => {
 
   describe('Integration scenarios', () => {
     it('should handle JavaScript code review', async () => {
-      const jsDiff = 'diff --git a/src/utils.js b/src/utils.js\n' +
-                     '+function processData(data) {\n' +
-                     '+  if (!data) return null;\n' +
-                     '+  return data.map(item => item.value);\n' +
-                     '+}';
+      const jsDiff =
+        'diff --git a/src/utils.js b/src/utils.js\n' +
+        '+function processData(data) {\n' +
+        '+  if (!data) return null;\n' +
+        '+  return data.map(item => item.value);\n' +
+        '+}';
 
-      const jsReview = '## Code Review\n\n' +
-                      '**Positive aspects:**\n' +
-                      '- Good null check\n' +
-                      '- Clean mapping logic\n\n' +
-                      '**Suggestions:**\n' +
-                      '- Consider using optional chaining';
+      const jsReview =
+        '## Code Review\n\n' +
+        '**Positive aspects:**\n' +
+        '- Good null check\n' +
+        '- Clean mapping logic\n\n' +
+        '**Suggestions:**\n' +
+        '- Consider using optional chaining';
 
       mockGit.getStagedDiff.mockReturnValue(jsDiff);
       mockAi.performCodeReview.mockResolvedValue(jsReview);
@@ -200,18 +208,20 @@ describe('Review Module', () => {
     });
 
     it('should handle TypeScript code review', async () => {
-      const tsDiff = 'diff --git a/src/types.ts b/src/types.ts\n' +
-                     '+interface User {\n' +
-                     '+  id: number;\n' +
-                     '+  name: string;\n' +
-                     '+  email?: string;\n' +
-                     '+}';
+      const tsDiff =
+        'diff --git a/src/types.ts b/src/types.ts\n' +
+        '+interface User {\n' +
+        '+  id: number;\n' +
+        '+  name: string;\n' +
+        '+  email?: string;\n' +
+        '+}';
 
-      const tsReview = '## Code Review\n\n' +
-                      '**Positive aspects:**\n' +
-                      '- Well-defined interface\n' +
-                      '- Appropriate use of optional property\n\n' +
-                      '**No issues found**';
+      const tsReview =
+        '## Code Review\n\n' +
+        '**Positive aspects:**\n' +
+        '- Well-defined interface\n' +
+        '- Appropriate use of optional property\n\n' +
+        '**No issues found**';
 
       mockGit.getStagedDiff.mockReturnValue(tsDiff);
       mockAi.performCodeReview.mockResolvedValue(tsReview);
@@ -223,21 +233,23 @@ describe('Review Module', () => {
     });
 
     it('should handle security-related code review', async () => {
-      const securityDiff = 'diff --git a/src/auth.js b/src/auth.js\n' +
-                          '+app.get("/user/:id", (req, res) => {\n' +
-                          '+  const query = `SELECT * FROM users WHERE id = ${req.params.id}`;\n' +
-                          '+  db.query(query, (err, result) => {\n' +
-                          '+    res.json(result);\n' +
-                          '+  });\n' +
-                          '+});';
+      const securityDiff =
+        'diff --git a/src/auth.js b/src/auth.js\n' +
+        '+app.get("/user/:id", (req, res) => {\n' +
+        '+  const query = `SELECT * FROM users WHERE id = ${req.params.id}`;\n' +
+        '+  db.query(query, (err, result) => {\n' +
+        '+    res.json(result);\n' +
+        '+  });\n' +
+        '+});';
 
-      const securityReview = '## Code Review\n\n' +
-                            '**🚨 SECURITY ISSUES:**\n' +
-                            '- SQL injection vulnerability detected\n' +
-                            '- Use parameterized queries instead\n\n' +
-                            '**Recommendations:**\n' +
-                            '- Replace with: `SELECT * FROM users WHERE id = ?`\n' +
-                            '- Add input validation';
+      const securityReview =
+        '## Code Review\n\n' +
+        '**🚨 SECURITY ISSUES:**\n' +
+        '- SQL injection vulnerability detected\n' +
+        '- Use parameterized queries instead\n\n' +
+        '**Recommendations:**\n' +
+        '- Replace with: `SELECT * FROM users WHERE id = ?`\n' +
+        '- Add input validation';
 
       mockGit.getStagedDiff.mockReturnValue(securityDiff);
       mockAi.performCodeReview.mockResolvedValue(securityReview);
@@ -249,17 +261,19 @@ describe('Review Module', () => {
     });
 
     it('should handle multiple file changes', async () => {
-      const multiFileDiff = 'diff --git a/src/app.js b/src/app.js\n' +
-                           '+const newFeature = require("./feature");\n' +
-                           'diff --git a/src/feature.js b/src/feature.js\n' +
-                           '+module.exports = { process: () => {} };';
+      const multiFileDiff =
+        'diff --git a/src/app.js b/src/app.js\n' +
+        '+const newFeature = require("./feature");\n' +
+        'diff --git a/src/feature.js b/src/feature.js\n' +
+        '+module.exports = { process: () => {} };';
 
-      const multiFileReview = '## Code Review\n\n' +
-                             '### File: src/app.js\n' +
-                             '- Good modular import\n\n' +
-                             '### File: src/feature.js\n' +
-                             '- Consider adding JSDoc comments\n' +
-                             '- Empty function implementation needs completion';
+      const multiFileReview =
+        '## Code Review\n\n' +
+        '### File: src/app.js\n' +
+        '- Good modular import\n\n' +
+        '### File: src/feature.js\n' +
+        '- Consider adding JSDoc comments\n' +
+        '- Empty function implementation needs completion';
 
       mockGit.getStagedDiff.mockReturnValue(multiFileDiff);
       mockAi.performCodeReview.mockResolvedValue(multiFileReview);
@@ -272,13 +286,15 @@ describe('Review Module', () => {
 
     it('should handle large diff gracefully', async () => {
       // Simulate a large diff
-      const largeDiff = 'diff --git a/src/large-file.js b/src/large-file.js\n' +
-                       Array(100).fill('+  console.log("line");').join('\n');
+      const largeDiff =
+        'diff --git a/src/large-file.js b/src/large-file.js\n' +
+        Array(100).fill('+  console.log("line");').join('\n');
 
-      const largeDiffReview = '## Code Review\n\n' +
-                             '**Note:** Large changeset detected\n' +
-                             '- Consider breaking into smaller commits\n' +
-                             '- Multiple console.log statements detected - consider using a proper logger';
+      const largeDiffReview =
+        '## Code Review\n\n' +
+        '**Note:** Large changeset detected\n' +
+        '- Consider breaking into smaller commits\n' +
+        '- Multiple console.log statements detected - consider using a proper logger';
 
       mockGit.getStagedDiff.mockReturnValue(largeDiff);
       mockAi.performCodeReview.mockResolvedValue(largeDiffReview);
@@ -335,4 +351,4 @@ describe('Review Module', () => {
       expect(mockProcessExit).toHaveBeenCalledWith(1);
     });
   });
-}); 
+});

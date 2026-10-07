@@ -1,6 +1,6 @@
 /**
  * AI Commit Tool - Git Operations
- * 
+ *
  * @author Edwin Menjivar
  * @copyright © 2024 Edwin Menjivar
  * @description Handles git operations for retrieving staged changes and committing with messages

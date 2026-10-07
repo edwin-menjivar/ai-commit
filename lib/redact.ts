@@ -1,6 +1,6 @@
 /**
  * AI Commit Tool - Secret Redaction
- * 
+ *
  * @author Edwin Menjivar
  * @copyright © 2024 Edwin Menjivar
  * @description Strips credentials out of diffs before they are sent to a model

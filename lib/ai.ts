@@ -1,6 +1,6 @@
 /**
  * AI Commit Tool - OpenAI Integration
- * 
+ *
  * @author Edwin Menjivar
  * @copyright © 2024 Edwin Menjivar
  * @description Handles AI-powered commit message generation using OpenAI's GPT models
@@ -129,7 +129,10 @@ const prepareDiff = (diff: string): string => {
 };
 
 /** Send a prompt and return the trimmed text of the first choice. */
-const complete = async (prompt: string, options: { temperature: number; maxTokens: number }): Promise<string> => {
+const complete = async (
+  prompt: string,
+  options: { temperature: number; maxTokens: number }
+): Promise<string> => {
   const response = await getClient().chat.completions.create({
     model: getModel(),
     messages: [{ role: 'user', content: prompt }],
@@ -154,7 +157,11 @@ ${prepareDiff(diff)}`;
   return complete(prompt, { temperature: 0.7, maxTokens: 100 });
 };
 
-export const generatePRDescription = async (commits: string, diff: string, branchName: string): Promise<string> => {
+export const generatePRDescription = async (
+  commits: string,
+  diff: string,
+  branchName: string
+): Promise<string> => {
   const prompt = `Generate a comprehensive pull request description based on the following information:
 
 Branch: ${branchName}
@@ -219,7 +226,7 @@ Return exactly 3 branch name suggestions, one per line, with no numbering or bul
   // Parse the suggestions - split by newlines and clean up
   return suggestions
     .split('\n')
-    .map(line => line.trim())
-    .filter(line => line.length > 0)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
     .slice(0, 3); // Ensure we only return 3
 };

@@ -1,6 +1,6 @@
 /**
  * AI Commit Tool - Branch Naming
- * 
+ *
  * @author Edwin Menjivar
  * @copyright © 2024 Edwin Menjivar
  * @description Generates AI-powered branch name suggestions based on current changes
@@ -77,7 +77,9 @@ export const suggestBranchName = async (): Promise<void> => {
     }
 
     if (!VALID_BRANCH_NAME.test(selectedName)) {
-      console.log('⚠️  Warning: Branch name should use lowercase letters, numbers, hyphens, and slashes only.');
+      console.log(
+        '⚠️  Warning: Branch name should use lowercase letters, numbers, hyphens, and slashes only.'
+      );
       if (!(await confirm('Create branch anyway? (y/n): '))) {
         console.log('Branch creation cancelled.');
         return;

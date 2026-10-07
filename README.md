@@ -4,15 +4,15 @@ Automatically generate meaningful Git commit messages, pull request descriptions
 
 ## ✨ Features
 
-* **AI Commit Messages**: Generates clear, conventional commit messages (e.g., `feat: add login route`)
-* **AI Pull Request Descriptions**: Creates comprehensive PR descriptions from branch commits and changes
-* **AI Code Reviews**: Performs thorough code analysis before commits to catch bugs, security issues, and style problems
-* **Interactive Workflows**: Edit and customize all AI-generated content before finalizing
-* **AI Branch Names**: Suggests conventional branch names based on your working changes
-* **Multiple Commands**: `commit`, `pr`, `review`, `branch` - each optimized for different parts of your Git workflow
-* **Secret Redaction**: Credentials are stripped from diffs before they are sent to any model
-* **Privacy-Focused**: Works with the OpenAI API or any OpenAI-compatible server (Ollama, LM Studio, vLLM)
-* **Extensible**: Easily adaptable for Git hooks, CI, or editor plugins
+- **AI Commit Messages**: Generates clear, conventional commit messages (e.g., `feat: add login route`)
+- **AI Pull Request Descriptions**: Creates comprehensive PR descriptions from branch commits and changes
+- **AI Code Reviews**: Performs thorough code analysis before commits to catch bugs, security issues, and style problems
+- **Interactive Workflows**: Edit and customize all AI-generated content before finalizing
+- **AI Branch Names**: Suggests conventional branch names based on your working changes
+- **Multiple Commands**: `commit`, `pr`, `review`, `branch` - each optimized for different parts of your Git workflow
+- **Secret Redaction**: Credentials are stripped from diffs before they are sent to any model
+- **Privacy-Focused**: Works with the OpenAI API or any OpenAI-compatible server (Ollama, LM Studio, vLLM)
+- **Extensible**: Easily adaptable for Git hooks, CI, or editor plugins
 
 ---
 
@@ -153,6 +153,7 @@ ai-commit pr --model gpt-3.5-turbo
 ```
 
 The tool will:
+
 - Analyze all commits in your branch vs main/master
 - Review the full diff of changes
 - Generate a structured PR description with:
@@ -177,8 +178,9 @@ ai-commit review --model gpt-4
 ```
 
 The AI will analyze your code for:
+
 - **Code Quality**: Best practices, readability, maintainability
-- **Potential Bugs**: Logic errors, edge cases, null checks  
+- **Potential Bugs**: Logic errors, edge cases, null checks
 - **Security**: Vulnerabilities, data validation, injection risks
 - **Performance**: Inefficient operations, memory usage
 - **Style**: Consistency, naming conventions
@@ -317,10 +319,10 @@ Feel free to submit issues or pull requests. Contributions are welcome!
 
 ## 💡 Future Improvements
 
-* Git hook installer for automatic code review
-* VSCode or JetBrains plugin
-* Team configuration sharing
-* Custom prompt templates
-* Integration with issue trackers (Jira, Linear)
-* Automated changelog generation
-* Multi-language commit message support
+- Git hook installer for automatic code review
+- VSCode or JetBrains plugin
+- Team configuration sharing
+- Custom prompt templates
+- Integration with issue trackers (Jira, Linear)
+- Automated changelog generation
+- Multi-language commit message support

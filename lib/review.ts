@@ -1,6 +1,6 @@
 /**
  * AI Commit Tool - Code Review Assistant
- * 
+ *
  * @author Edwin Menjivar
  * @copyright © 2024 Edwin Menjivar
  * @description Performs AI-powered code reviews of staged changes before commits
@@ -20,21 +20,21 @@ export const performCodeReview = async (): Promise<void> => {
     }
 
     console.log('🔍 Analyzing staged changes for code review...');
-    
-    const diff = getStagedDiff();
-  
-  if (!diff.trim()) {
-    console.log('❌ No staged changes detected');
-    console.log('Use `git add` to stage files for review');
-    return;
-  }
 
-  console.log('🤖 Performing AI code review...');
-  
+    const diff = getStagedDiff();
+
+    if (!diff.trim()) {
+      console.log('❌ No staged changes detected');
+      console.log('Use `git add` to stage files for review');
+      return;
+    }
+
+    console.log('🤖 Performing AI code review...');
+
     const review = await performCodeReviewAI(diff);
     await displayCodeReview(review);
   } catch (error) {
     console.error('❌ Failed to perform code review:', error);
     process.exit(1);
   }
-}; 
+};

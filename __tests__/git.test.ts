@@ -4,18 +4,18 @@
 
 import { execFileSync } from 'child_process';
 import {
-    getStagedDiff,
-    commitChanges,
-    getCurrentBranch,
-    getMainBranch,
-    getBranchCommits,
-    getBranchDiff,
-    isGitRepository,
-    getUnstagedDiff,
-    getAllChangesDiff,
-    createBranch,
-    checkoutBranch,
-    branchExists
+  getStagedDiff,
+  commitChanges,
+  getCurrentBranch,
+  getMainBranch,
+  getBranchCommits,
+  getBranchDiff,
+  isGitRepository,
+  getUnstagedDiff,
+  getAllChangesDiff,
+  createBranch,
+  checkoutBranch,
+  branchExists,
 } from '../lib/git';
 
 // Mock child_process
@@ -83,11 +83,9 @@ describe('Git Operations', () => {
 
       commitChanges('feat: add new feature');
 
-      expect(mockedExecFileSync).toHaveBeenCalledWith(
-        'git',
-        ['commit', '-m', 'feat: add new feature'],
-        { stdio: 'inherit' }
-      );
+      expect(mockedExecFileSync).toHaveBeenCalledWith('git', ['commit', '-m', 'feat: add new feature'], {
+        stdio: 'inherit',
+      });
     });
 
     it('should pass shell metacharacters through as literal text', () => {
@@ -97,11 +95,7 @@ describe('Git Operations', () => {
       commitChanges(message);
 
       // The message is an argv entry, so the shell never sees these characters.
-      expect(mockedExecFileSync).toHaveBeenCalledWith(
-        'git',
-        ['commit', '-m', message],
-        { stdio: 'inherit' }
-      );
+      expect(mockedExecFileSync).toHaveBeenCalledWith('git', ['commit', '-m', message], { stdio: 'inherit' });
     });
 
     it('should preserve multi-line commit messages', () => {
@@ -110,11 +104,7 @@ describe('Git Operations', () => {
       const message = 'feat: add thing\n\nA longer body explaining why.';
       commitChanges(message);
 
-      expect(mockedExecFileSync).toHaveBeenCalledWith(
-        'git',
-        ['commit', '-m', message],
-        { stdio: 'inherit' }
-      );
+      expect(mockedExecFileSync).toHaveBeenCalledWith('git', ['commit', '-m', message], { stdio: 'inherit' });
     });
   });
 
@@ -315,11 +305,7 @@ describe('Git Operations', () => {
       mockedExecFileSync.mockReturnValue('.git\n');
 
       expect(isGitRepository()).toBe(true);
-      expect(mockedExecFileSync).toHaveBeenCalledWith(
-        'git',
-        ['rev-parse', '--git-dir'],
-        { stdio: 'ignore' }
-      );
+      expect(mockedExecFileSync).toHaveBeenCalledWith('git', ['rev-parse', '--git-dir'], { stdio: 'ignore' });
     });
 
     it('should return false outside a repository', () => {
@@ -352,9 +338,7 @@ describe('Git Operations', () => {
 
   describe('getAllChangesDiff', () => {
     it('should combine staged and unstaged diffs', () => {
-      mockedExecFileSync
-        .mockReturnValueOnce('staged changes')
-        .mockReturnValueOnce('unstaged changes');
+      mockedExecFileSync.mockReturnValueOnce('staged changes').mockReturnValueOnce('unstaged changes');
 
       const result = getAllChangesDiff();
 
@@ -378,11 +362,9 @@ describe('Git Operations', () => {
 
       createBranch('feat/new-thing');
 
-      expect(mockedExecFileSync).toHaveBeenCalledWith(
-        'git',
-        ['checkout', '-b', 'feat/new-thing'],
-        { stdio: 'inherit' }
-      );
+      expect(mockedExecFileSync).toHaveBeenCalledWith('git', ['checkout', '-b', 'feat/new-thing'], {
+        stdio: 'inherit',
+      });
     });
 
     it('should not let a crafted branch name reach the shell', () => {
@@ -391,11 +373,7 @@ describe('Git Operations', () => {
       const name = 'feat/x;rm -rf /';
       createBranch(name);
 
-      expect(mockedExecFileSync).toHaveBeenCalledWith(
-        'git',
-        ['checkout', '-b', name],
-        { stdio: 'inherit' }
-      );
+      expect(mockedExecFileSync).toHaveBeenCalledWith('git', ['checkout', '-b', name], { stdio: 'inherit' });
     });
   });
 
@@ -405,11 +383,9 @@ describe('Git Operations', () => {
 
       checkoutBranch('feat/existing');
 
-      expect(mockedExecFileSync).toHaveBeenCalledWith(
-        'git',
-        ['checkout', 'feat/existing'],
-        { stdio: 'inherit' }
-      );
+      expect(mockedExecFileSync).toHaveBeenCalledWith('git', ['checkout', 'feat/existing'], {
+        stdio: 'inherit',
+      });
     });
   });
 

@@ -1,6 +1,6 @@
 /**
  * AI Commit Tool - Message Formatting & User Interaction
- * 
+ *
  * @author Edwin Menjivar
  * @copyright © 2024 Edwin Menjivar
  * @description Handles user confirmation and editing of generated commit messages
@@ -67,9 +67,9 @@ export const confirmCommitMessage = async (message: string): Promise<string | nu
 
 export const confirmPRDescription = async (description: string, branchName: string): Promise<void> => {
   console.log(`\n🤖 Generated PR description for branch: ${branchName}`);
-  console.log('=' .repeat(60));
+  console.log('='.repeat(60));
   console.log(description);
-  console.log('=' .repeat(60));
+  console.log('='.repeat(60));
 
   const rl = readline.createInterface({
     input: process.stdin,
@@ -79,9 +79,9 @@ export const confirmPRDescription = async (description: string, branchName: stri
   return new Promise((resolve) => {
     rl.question(`\nSave to file? (y/n/edit): `, async (answer) => {
       rl.close();
-      
+
       const trimmedAnswer = answer.trim().toLowerCase();
-      
+
       if (trimmedAnswer === 'y' || trimmedAnswer === 'yes' || trimmedAnswer === '') {
         await savePRDescription(description, branchName);
         resolve();
@@ -98,9 +98,9 @@ export const confirmPRDescription = async (description: string, branchName: stri
 
 export const displayCodeReview = async (review: string): Promise<void> => {
   console.log(`\n🔍 AI Code Review Results:`);
-  console.log('=' .repeat(60));
+  console.log('='.repeat(60));
   console.log(review);
-  console.log('=' .repeat(60));
+  console.log('='.repeat(60));
 
   const rl = readline.createInterface({
     input: process.stdin,
@@ -110,9 +110,9 @@ export const displayCodeReview = async (review: string): Promise<void> => {
   return new Promise((resolve) => {
     rl.question(`\nSave review to file? (y/n): `, async (answer) => {
       rl.close();
-      
+
       const trimmedAnswer = answer.trim().toLowerCase();
-      
+
       if (trimmedAnswer === 'y' || trimmedAnswer === 'yes') {
         await saveCodeReview(review);
         resolve();
@@ -170,45 +170,48 @@ const editPRDescription = async (description: string, branchName: string): Promi
 
 export const selectBranchName = async (suggestions: string[]): Promise<string | null> => {
   console.log(`\n🤖 Suggested branch names based on your changes:\n`);
-  
+
   suggestions.forEach((suggestion, index) => {
     console.log(`   ${index + 1}. ${suggestion}`);
   });
-  
+
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
   });
 
   return new Promise((resolve) => {
-    rl.question(`\nSelect a branch name (1-${suggestions.length}) or type your own (or 'q' to quit): `, (answer) => {
-      rl.close();
-      
-      const trimmedAnswer = answer.trim();
-      
-      // Quit
-      if (trimmedAnswer.toLowerCase() === 'q' || trimmedAnswer.toLowerCase() === 'quit') {
+    rl.question(
+      `\nSelect a branch name (1-${suggestions.length}) or type your own (or 'q' to quit): `,
+      (answer) => {
+        rl.close();
+
+        const trimmedAnswer = answer.trim();
+
+        // Quit
+        if (trimmedAnswer.toLowerCase() === 'q' || trimmedAnswer.toLowerCase() === 'quit') {
+          console.log('Branch creation cancelled.');
+          resolve(null);
+          return;
+        }
+
+        // Check if it's a number selection
+        const selection = parseInt(trimmedAnswer, 10);
+        if (!isNaN(selection) && selection >= 1 && selection <= suggestions.length) {
+          resolve(suggestions[selection - 1]);
+          return;
+        }
+
+        // User provided custom branch name
+        if (trimmedAnswer.length > 0) {
+          resolve(trimmedAnswer);
+          return;
+        }
+
+        // Empty input - cancel
         console.log('Branch creation cancelled.');
         resolve(null);
-        return;
       }
-      
-      // Check if it's a number selection
-      const selection = parseInt(trimmedAnswer, 10);
-      if (!isNaN(selection) && selection >= 1 && selection <= suggestions.length) {
-        resolve(suggestions[selection - 1]);
-        return;
-      }
-      
-      // User provided custom branch name
-      if (trimmedAnswer.length > 0) {
-        resolve(trimmedAnswer);
-        return;
-      }
-      
-      // Empty input - cancel
-      console.log('Branch creation cancelled.');
-      resolve(null);
-    });
+    );
   });
 };

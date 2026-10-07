@@ -4,13 +4,13 @@
 
 // Mock OpenAI before importing
 const mockChatCompletions = {
-  create: jest.fn()
+  create: jest.fn(),
 };
 
 const mockOpenAI = {
   chat: {
-    completions: mockChatCompletions
-  }
+    completions: mockChatCompletions,
+  },
 };
 
 jest.mock('openai', () => {
@@ -19,21 +19,21 @@ jest.mock('openai', () => {
 
 // Mock dotenv
 jest.mock('dotenv', () => ({
-  config: jest.fn()
+  config: jest.fn(),
 }));
 
 // Mock path
 jest.mock('path', () => ({
-  join: jest.fn().mockReturnValue('.env')
+  join: jest.fn().mockReturnValue('.env'),
 }));
 
 import OpenAI from 'openai';
 import {
-    generateCommitMessage,
-    generatePRDescription,
-    performCodeReview,
-    generateBranchNameSuggestions,
-    resetClient
+  generateCommitMessage,
+  generatePRDescription,
+  performCodeReview,
+  generateBranchNameSuggestions,
+  resetClient,
 } from '../lib/ai';
 
 const MockedOpenAI = OpenAI as unknown as jest.Mock;
@@ -57,11 +57,13 @@ describe('AI Module', () => {
     it('should generate commit message from diff', async () => {
       const mockDiff = 'diff --git a/file.js b/file.js\n+console.log("hello");';
       const mockResponse = {
-        choices: [{
-          message: {
-            content: 'feat: add console log statement'
-          }
-        }]
+        choices: [
+          {
+            message: {
+              content: 'feat: add console log statement',
+            },
+          },
+        ],
       };
 
       mockChatCompletions.create.mockResolvedValue(mockResponse);
@@ -70,12 +72,14 @@ describe('AI Module', () => {
 
       expect(mockChatCompletions.create).toHaveBeenCalledWith({
         model: 'gpt-4',
-        messages: [{
-          role: 'user',
-          content: expect.stringContaining('Generate a concise, conventional commit message')
-        }],
+        messages: [
+          {
+            role: 'user',
+            content: expect.stringContaining('Generate a concise, conventional commit message'),
+          },
+        ],
         temperature: 0.7,
-        max_tokens: 100
+        max_tokens: 100,
       });
 
       expect(result).toBe('feat: add console log statement');
@@ -83,13 +87,15 @@ describe('AI Module', () => {
 
     it('should use default model when OPENAI_MODEL not set', async () => {
       delete process.env.OPENAI_MODEL;
-      
+
       const mockResponse = {
-        choices: [{
-          message: {
-            content: 'fix: resolve issue'
-          }
-        }]
+        choices: [
+          {
+            message: {
+              content: 'fix: resolve issue',
+            },
+          },
+        ],
       };
 
       mockChatCompletions.create.mockResolvedValue(mockResponse);
@@ -98,18 +104,20 @@ describe('AI Module', () => {
 
       expect(mockChatCompletions.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          model: 'gpt-4o-mini'
+          model: 'gpt-4o-mini',
         })
       );
     });
 
     it('should handle empty response content', async () => {
       const mockResponse = {
-        choices: [{
-          message: {
-            content: null
-          }
-        }]
+        choices: [
+          {
+            message: {
+              content: null,
+            },
+          },
+        ],
       };
 
       mockChatCompletions.create.mockResolvedValue(mockResponse);
@@ -121,11 +129,13 @@ describe('AI Module', () => {
 
     it('should include conventional commit examples in prompt', async () => {
       const mockResponse = {
-        choices: [{
-          message: {
-            content: 'feat: add feature'
-          }
-        }]
+        choices: [
+          {
+            message: {
+              content: 'feat: add feature',
+            },
+          },
+        ],
       };
 
       mockChatCompletions.create.mockResolvedValue(mockResponse);
@@ -148,11 +158,13 @@ describe('AI Module', () => {
       const branchName = 'feature/user-auth';
 
       const mockResponse = {
-        choices: [{
-          message: {
-            content: '# User Authentication Feature\n\nAdded login functionality...'
-          }
-        }]
+        choices: [
+          {
+            message: {
+              content: '# User Authentication Feature\n\nAdded login functionality...',
+            },
+          },
+        ],
       };
 
       mockChatCompletions.create.mockResolvedValue(mockResponse);
@@ -161,12 +173,14 @@ describe('AI Module', () => {
 
       expect(mockChatCompletions.create).toHaveBeenCalledWith({
         model: 'gpt-4',
-        messages: [{
-          role: 'user',
-          content: expect.stringContaining('Generate a comprehensive pull request description')
-        }],
+        messages: [
+          {
+            role: 'user',
+            content: expect.stringContaining('Generate a comprehensive pull request description'),
+          },
+        ],
         temperature: 0.7,
-        max_tokens: 800
+        max_tokens: 800,
       });
 
       expect(result).toBe('# User Authentication Feature\n\nAdded login functionality...');
@@ -174,11 +188,13 @@ describe('AI Module', () => {
 
     it('should include branch name in prompt', async () => {
       const mockResponse = {
-        choices: [{
-          message: {
-            content: 'PR description'
-          }
-        }]
+        choices: [
+          {
+            message: {
+              content: 'PR description',
+            },
+          },
+        ],
       };
 
       mockChatCompletions.create.mockResolvedValue(mockResponse);
@@ -195,11 +211,13 @@ describe('AI Module', () => {
 
     it('should request structured markdown format', async () => {
       const mockResponse = {
-        choices: [{
-          message: {
-            content: 'PR description'
-          }
-        }]
+        choices: [
+          {
+            message: {
+              content: 'PR description',
+            },
+          },
+        ],
       };
 
       mockChatCompletions.create.mockResolvedValue(mockResponse);
@@ -223,11 +241,13 @@ describe('AI Module', () => {
       const diff = 'diff --git a/app.js b/app.js\n+const result = data.map(x => x.value);';
 
       const mockResponse = {
-        choices: [{
-          message: {
-            content: '## Code Review\n\n**Positive aspects:**\n- Clean map usage...'
-          }
-        }]
+        choices: [
+          {
+            message: {
+              content: '## Code Review\n\n**Positive aspects:**\n- Clean map usage...',
+            },
+          },
+        ],
       };
 
       mockChatCompletions.create.mockResolvedValue(mockResponse);
@@ -236,12 +256,14 @@ describe('AI Module', () => {
 
       expect(mockChatCompletions.create).toHaveBeenCalledWith({
         model: 'gpt-4',
-        messages: [{
-          role: 'user',
-          content: expect.stringContaining('Perform a thorough code review')
-        }],
+        messages: [
+          {
+            role: 'user',
+            content: expect.stringContaining('Perform a thorough code review'),
+          },
+        ],
         temperature: 0.3,
-        max_tokens: 1000
+        max_tokens: 1000,
       });
 
       expect(result).toBe('## Code Review\n\n**Positive aspects:**\n- Clean map usage...');
@@ -249,11 +271,13 @@ describe('AI Module', () => {
 
     it('should use lower temperature for more focused reviews', async () => {
       const mockResponse = {
-        choices: [{
-          message: {
-            content: 'Review content'
-          }
-        }]
+        choices: [
+          {
+            message: {
+              content: 'Review content',
+            },
+          },
+        ],
       };
 
       mockChatCompletions.create.mockResolvedValue(mockResponse);
@@ -262,18 +286,20 @@ describe('AI Module', () => {
 
       expect(mockChatCompletions.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          temperature: 0.3
+          temperature: 0.3,
         })
       );
     });
 
     it('should request analysis of specific areas', async () => {
       const mockResponse = {
-        choices: [{
-          message: {
-            content: 'Review content'
-          }
-        }]
+        choices: [
+          {
+            message: {
+              content: 'Review content',
+            },
+          },
+        ],
       };
 
       mockChatCompletions.create.mockResolvedValue(mockResponse);
@@ -293,11 +319,13 @@ describe('AI Module', () => {
 
     it('should request structured feedback', async () => {
       const mockResponse = {
-        choices: [{
-          message: {
-            content: 'Review content'
-          }
-        }]
+        choices: [
+          {
+            message: {
+              content: 'Review content',
+            },
+          },
+        ],
       };
 
       mockChatCompletions.create.mockResolvedValue(mockResponse);
@@ -350,14 +378,12 @@ describe('AI Module', () => {
       resetClient();
       MockedOpenAI.mockClear();
       mockChatCompletions.create.mockResolvedValue({
-        choices: [{ message: { content: 'feat: x' } }]
+        choices: [{ message: { content: 'feat: x' } }],
       });
 
       await generateCommitMessage('diff');
 
-      expect(MockedOpenAI).toHaveBeenCalledWith(
-        expect.objectContaining({ apiKey: 'test-api-key' })
-      );
+      expect(MockedOpenAI).toHaveBeenCalledWith(expect.objectContaining({ apiKey: 'test-api-key' }));
     });
 
     it('should honour OPENAI_API_BASE for local or self-hosted models', async () => {
@@ -365,7 +391,7 @@ describe('AI Module', () => {
       MockedOpenAI.mockClear();
       process.env.OPENAI_API_BASE = 'http://localhost:11434/v1';
       mockChatCompletions.create.mockResolvedValue({
-        choices: [{ message: { content: 'feat: x' } }]
+        choices: [{ message: { content: 'feat: x' } }],
       });
 
       await generateCommitMessage('diff');
@@ -379,7 +405,7 @@ describe('AI Module', () => {
       resetClient();
       MockedOpenAI.mockClear();
       mockChatCompletions.create.mockResolvedValue({
-        choices: [{ message: { content: 'feat: x' } }]
+        choices: [{ message: { content: 'feat: x' } }],
       });
 
       await generateCommitMessage('diff');
@@ -394,7 +420,7 @@ describe('AI Module', () => {
 
     beforeEach(() => {
       mockChatCompletions.create.mockResolvedValue({
-        choices: [{ message: { content: 'feat: x' } }]
+        choices: [{ message: { content: 'feat: x' } }],
       });
     });
 
@@ -431,7 +457,7 @@ describe('AI Module', () => {
     beforeEach(() => {
       warn = jest.spyOn(console, 'warn').mockImplementation();
       mockChatCompletions.create.mockResolvedValue({
-        choices: [{ message: { content: 'feat: x' } }]
+        choices: [{ message: { content: 'feat: x' } }],
       });
     });
 
@@ -444,7 +470,7 @@ describe('AI Module', () => {
       'diff --git a/.env b/.env',
       '--- a/.env',
       '+++ b/.env',
-      '+OPENAI_API_KEY=sk-abcdefghijklmnopqrstuvwxyz0123456789'
+      '+OPENAI_API_KEY=sk-abcdefghijklmnopqrstuvwxyz0123456789',
     ].join('\n');
 
     it('should not send a secret to the API', async () => {
@@ -507,7 +533,7 @@ describe('AI Module', () => {
 
     it('should return an empty string when the message content is null', async () => {
       mockChatCompletions.create.mockResolvedValue({
-        choices: [{ message: { content: null } }]
+        choices: [{ message: { content: null } }],
       });
 
       await expect(generateCommitMessage('diff')).resolves.toBe('');
@@ -519,4 +545,4 @@ describe('AI Module', () => {
       await expect(generateBranchNameSuggestions('diff')).resolves.toEqual([]);
     });
   });
-}); 
+});

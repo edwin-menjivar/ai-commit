@@ -1,6 +1,6 @@
 /**
  * AI Commit Tool - Interactive Prompt Helpers
- * 
+ *
  * @author Edwin Menjivar
  * @copyright © 2024 Edwin Menjivar
  * @description Small promise-based wrappers around readline for terminal prompts

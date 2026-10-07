@@ -5,7 +5,8 @@
 import { redactSecrets, findSensitivePaths, REDACTED } from '../lib/redact';
 
 /** Wrap a value in a realistic added-line of a diff. */
-const added = (line: string) => `diff --git a/config.ts b/config.ts\n--- a/config.ts\n+++ b/config.ts\n+${line}\n`;
+const added = (line: string) =>
+  `diff --git a/config.ts b/config.ts\n--- a/config.ts\n+++ b/config.ts\n+${line}\n`;
 
 describe('redactSecrets', () => {
   describe('provider token shapes', () => {
@@ -117,7 +118,8 @@ describe('redactSecrets', () => {
   });
 
   it('should redact every secret in a diff with several', () => {
-    const diff = added('A=sk-abcdefghijklmnopqrstuvwxyz012345') + added('B=ghp_abcdefghijklmnopqrstuvwxyz0123456789');
+    const diff =
+      added('A=sk-abcdefghijklmnopqrstuvwxyz012345') + added('B=ghp_abcdefghijklmnopqrstuvwxyz0123456789');
 
     const result = redactSecrets(diff);
 

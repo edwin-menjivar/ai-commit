@@ -38,7 +38,7 @@ describe('Branch Module', () => {
       mockAi.generateBranchNameSuggestions.mockResolvedValue([
         'feat/add-test-function',
         'feat/test-feature',
-        'feature/test'
+        'feature/test',
       ]);
       mockFormatter.selectBranchName.mockResolvedValue('feat/add-test-function');
       mockGit.branchExists.mockReturnValue(false);
@@ -57,7 +57,7 @@ describe('Branch Module', () => {
       expect(mockFormatter.selectBranchName).toHaveBeenCalledWith([
         'feat/add-test-function',
         'feat/test-feature',
-        'feature/test'
+        'feature/test',
       ]);
     });
 
@@ -96,7 +96,9 @@ describe('Branch Module', () => {
 
       await branchModule.suggestBranchName();
 
-      expect(mockConsoleLog).toHaveBeenCalledWith('❌ No changes detected. Make some changes first, then run this command.');
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        '❌ No changes detected. Make some changes first, then run this command.'
+      );
       expect(mockAi.generateBranchNameSuggestions).not.toHaveBeenCalled();
     });
 
@@ -110,12 +112,11 @@ describe('Branch Module', () => {
 
     it('should handle case when branch already exists', async () => {
       mockGit.branchExists.mockReturnValue(true);
-      
+
       // Mock readline for the branch switch prompt
       const mockReadline = require('readline');
-      const originalCreateInterface = mockReadline.createInterface;
       let questionCallback: (answer: string) => void;
-      
+
       mockReadline.createInterface = jest.fn().mockReturnValue({
         question: jest.fn().mockImplementation((prompt: string, callback: (answer: string) => void) => {
           questionCallback = callback;
@@ -125,7 +126,7 @@ describe('Branch Module', () => {
       });
 
       const suggestPromise = branchModule.suggestBranchName();
-      
+
       // Simulate user saying 'no' to switching
       setTimeout(() => {
         if (questionCallback) {
@@ -211,8 +212,9 @@ describe('Branch Module', () => {
 
       await branchModule.suggestBranchName();
 
-      expect(mockConsoleLog).toHaveBeenCalledWith('ℹ️  You\'re on main. Creating a new branch is recommended.');
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        "ℹ️  You're on main. Creating a new branch is recommended."
+      );
     });
   });
 });
-
