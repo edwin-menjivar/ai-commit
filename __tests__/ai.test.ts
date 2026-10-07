@@ -98,7 +98,7 @@ describe('AI Module', () => {
 
       expect(mockChatCompletions.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          model: 'gpt-3.5-turbo'
+          model: 'gpt-4o-mini'
         })
       );
     });

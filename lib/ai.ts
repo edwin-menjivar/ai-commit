@@ -9,6 +9,7 @@
 import OpenAI from 'openai';
 import * as dotenv from 'dotenv';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { redactSecrets, findSensitivePaths } from './redact';
 
@@ -16,24 +17,36 @@ import { redactSecrets, findSensitivePaths } from './redact';
 // than letting the whole command fail on a big branch.
 const MAX_DIFF_CHARS = 48_000;
 
-// The .env may sit next to the compiled output (dist/lib -> repo root), next to
-// the sources when running from TypeScript, or in the directory the user ran
-// the command from. Load the first one that exists.
+const DEFAULT_MODEL = 'gpt-4o-mini';
+
+/**
+ * Per-user config file, for a globally installed CLI that has no "project
+ * root" to put a .env in. Honours XDG_CONFIG_HOME, defaulting to ~/.config.
+ */
+export const userConfigPath = (): string => {
+  const configHome = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config');
+  return path.join(configHome, 'ai-commit', '.env');
+};
+
+// Every file that exists is loaded, most specific first. dotenv never
+// overrides a value that is already set, so variables exported in the shell
+// win, then the repository's own .env, then the package checkout's .env (for
+// `npm link` during development), then the user-level config. Loading all of
+// them rather than stopping at the first means a project .env that holds only
+// unrelated settings does not hide the user's key.
 const loadEnv = (): void => {
   const candidates = [
+    path.join(process.cwd(), '.env'),
     path.join(__dirname, '..', '..', '.env'),
     path.join(__dirname, '..', '.env'),
-    path.join(process.cwd(), '.env'),
+    userConfigPath(),
   ];
 
   for (const candidate of candidates) {
     if (fs.existsSync(candidate)) {
       dotenv.config({ path: candidate });
-      return;
     }
   }
-
-  dotenv.config();
 };
 
 loadEnv();
@@ -50,7 +63,8 @@ const getClient = (): OpenAI => {
 
     if (!apiKey) {
       throw new Error(
-        'OPENAI_API_KEY is not set. Add it to a .env file in the project root or export it in your shell.\n' +
+        'OPENAI_API_KEY is not set. Export it in your shell, or put it in a .env file in the current\n' +
+          `directory or in ${userConfigPath()}.\n` +
           'Get a key at https://platform.openai.com/account/api-keys'
       );
     }
@@ -71,7 +85,7 @@ export const resetClient = (): void => {
 };
 
 const getModel = (): string => {
-  return process.env.OPENAI_MODEL || 'gpt-3.5-turbo';
+  return process.env.OPENAI_MODEL || DEFAULT_MODEL;
 };
 
 /** Trim a diff to a size the model will accept, noting that it was shortened. */
