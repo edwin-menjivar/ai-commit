@@ -50,7 +50,7 @@ describe('CLI', () => {
 
   describe('parseArgs', () => {
     it('should default to the commit command', () => {
-      expect(parseArgs([])).toEqual({ command: 'commit', model: undefined, showVersion: false });
+      expect(parseArgs([])).toEqual({ command: 'commit', model: undefined, print: false, showVersion: false });
     });
 
     it.each(['commit', 'pr', 'review', 'branch', 'help'])('should parse the %s command', (cmd) => {
@@ -69,8 +69,27 @@ describe('CLI', () => {
       expect(parseArgs(['--model', 'gpt-4'])).toEqual({
         command: 'commit',
         model: 'gpt-4',
+        print: false,
         showVersion: false,
       });
+    });
+
+    it.each(['--print', '-p'])('should parse %s', (flag) => {
+      const result = parseArgs([flag]);
+
+      expect(result.print).toBe(true);
+      expect(result.command).toBe('commit');
+      expect(result.error).toBeUndefined();
+    });
+
+    it('should accept --print together with the explicit commit command and a model', () => {
+      const result = parseArgs(['commit', '--print', '--model', 'gpt-4o']);
+
+      expect(result).toEqual({ command: 'commit', model: 'gpt-4o', print: true, showVersion: false });
+    });
+
+    it.each(['pr', 'review', 'branch'])('should reject --print with the %s command', (cmd) => {
+      expect(parseArgs([cmd, '--print']).error).toBe('--print only applies to the commit command');
     });
 
     it('should parse a command combined with --model', () => {
@@ -126,6 +145,7 @@ describe('CLI', () => {
 
       const output = mockConsoleLog.mock.calls[0][0];
       expect(output).toContain('--model');
+      expect(output).toContain('--print');
       expect(output).toContain('--version');
     });
   });
@@ -176,6 +196,43 @@ describe('CLI', () => {
       expect(mockProcessExit).toHaveBeenCalledWith(1);
     });
 
+    describe('with --print', () => {
+      const mockStdout = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+      afterAll(() => {
+        mockStdout.mockRestore();
+      });
+
+      it('should write the message to stdout without prompting or committing', async () => {
+        await runCommit({ print: true });
+
+        expect(mockStdout).toHaveBeenCalledWith('feat: add test\n');
+        expect(mockFormatter.confirmCommitMessage).not.toHaveBeenCalled();
+        expect(mockGit.commitChanges).not.toHaveBeenCalled();
+        expect(mockProcessExit).not.toHaveBeenCalled();
+      });
+
+      it('should keep stdout clean and exit 1 when nothing is staged', async () => {
+        mockGit.getStagedDiff.mockReturnValue('');
+
+        await runCommit({ print: true });
+
+        expect(mockStdout).not.toHaveBeenCalled();
+        expect(mockConsoleLog).not.toHaveBeenCalled();
+        expect(mockConsoleError).toHaveBeenCalledWith('No staged changes detected.');
+        expect(mockProcessExit).toHaveBeenCalledWith(1);
+      });
+
+      it('should exit 1 when the model returns an empty message', async () => {
+        mockAi.generateCommitMessage.mockResolvedValue('');
+
+        await runCommit({ print: true });
+
+        expect(mockStdout).not.toHaveBeenCalled();
+        expect(mockProcessExit).toHaveBeenCalledWith(1);
+      });
+    });
+
     it('should report a readable message when the API call fails', async () => {
       mockAi.generateCommitMessage.mockRejectedValue(new Error('API key invalid'));
 
@@ -210,6 +267,16 @@ describe('CLI', () => {
       await run('commit');
 
       expect(mockGit.commitChanges).toHaveBeenCalled();
+    });
+
+    it('should pass print mode through to the commit flow', async () => {
+      const mockStdout = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+      await run('commit', { print: true });
+
+      expect(mockStdout).toHaveBeenCalledWith('feat: add test\n');
+      expect(mockGit.commitChanges).not.toHaveBeenCalled();
+      mockStdout.mockRestore();
     });
 
     it('should route pr to the PR generator', async () => {
