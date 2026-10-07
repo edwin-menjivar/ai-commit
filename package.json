@@ -1,7 +1,7 @@
 {
-  "name": "ai-commit",
+  "name": "@edwin-menjivar/ai-commit",
   "version": "1.0.0",
-  "description": "AI-powered Git workflow assistant",
+  "description": "AI-powered git assistant: commit messages, PR descriptions, code reviews and branch names from your diff",
   "main": "dist/bin/ai-commit.js",
   "bin": {
     "ai-commit": "./dist/bin/ai-commit.js"
@@ -21,17 +21,33 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
+    "prepare": "npm run build",
     "prepublishOnly": "npm run typecheck && npm test && npm run build"
   },
   "keywords": [
     "git",
     "ai",
     "commit",
+    "commit-message",
+    "pull-request",
+    "code-review",
     "openai",
+    "ollama",
     "cli"
   ],
   "author": "Edwin Menjivar",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/edwin-menjivar/ai-commit.git"
+  },
+  "bugs": {
+    "url": "https://github.com/edwin-menjivar/ai-commit/issues"
+  },
+  "homepage": "https://github.com/edwin-menjivar/ai-commit#readme",
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "dotenv": "^16.4.5",
     "openai": "^4.47.1"
