@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -12,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node-version: ['18.x', '20.x', '22.x']
+        node-version: ['18.x', '20.x', '22.x', '24.x']
 
     steps:
       - uses: actions/checkout@v4
@@ -28,8 +31,27 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Lint
+        run: npm run lint
+
+      - name: Check formatting
+        run: npm run format:check
+
       - name: Build
         run: npm run build
 
       - name: Test
         run: npm test -- --coverage
+
+      - name: Smoke-test the built CLI
+        run: |
+          node dist/bin/ai-commit.js --version
+          node dist/bin/ai-commit.js --help
+          # Must fail cleanly, without a key and without a stack trace, when nothing is staged.
+          if node dist/bin/ai-commit.js --print; then
+            echo "expected a non-zero exit with nothing staged" >&2
+            exit 1
+          fi
+
+      - name: Check the publishable package contents
+        run: npm pack --dry-run

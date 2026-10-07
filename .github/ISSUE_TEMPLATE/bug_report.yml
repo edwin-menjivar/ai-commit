@@ -1,0 +1,38 @@
+name: Bug report
+description: Something is not working as documented
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you run, and what did you expect instead? Paste output with any API keys removed.
+      placeholder: |
+        $ ai-commit review
+        ❌ ...
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. git add some-file
+        2. ai-commit --model ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: ai-commit version
+      description: Output of `ai-commit --version`
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Node version (`node --version`), and whether you use the OpenAI API or a local server
+      placeholder: macOS 15, Node 22.14, Ollama llama3
+    validations:
+      required: true
