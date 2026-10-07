@@ -1,328 +1,234 @@
-# AI Git Assistant
+# ai-commit
 
-Automatically generate meaningful Git commit messages, pull request descriptions, and perform AI-powered code reviews using OpenAI or a local LLM.
+[![CI](https://github.com/edwin-menjivar/ai-commit/actions/workflows/ci.yml/badge.svg)](https://github.com/edwin-menjivar/ai-commit/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/%40edwin-menjivar%2Fai-commit)](https://www.npmjs.com/package/@edwin-menjivar/ai-commit)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-## ✨ Features
+AI-powered git assistant. Generates conventional commit messages, pull request descriptions, code reviews and branch names from your diff, using the OpenAI API or any OpenAI-compatible local model.
 
-- **AI Commit Messages**: Generates clear, conventional commit messages (e.g., `feat: add login route`)
-- **AI Pull Request Descriptions**: Creates comprehensive PR descriptions from branch commits and changes
-- **AI Code Reviews**: Performs thorough code analysis before commits to catch bugs, security issues, and style problems
-- **Interactive Workflows**: Edit and customize all AI-generated content before finalizing
-- **AI Branch Names**: Suggests conventional branch names based on your working changes
-- **Multiple Commands**: `commit`, `pr`, `review`, `branch` - each optimized for different parts of your Git workflow
-- **Secret Redaction**: Credentials are stripped from diffs before they are sent to any model
-- **Privacy-Focused**: Works with the OpenAI API or any OpenAI-compatible server (Ollama, LM Studio, vLLM)
-- **Extensible**: Easily adaptable for Git hooks, CI, or editor plugins
+```
+$ git add .
+$ ai-commit
 
----
+🤖 Generated commit message:
+   "feat(auth): add password reset flow"
 
-## 🔧 Prerequisites & Configuration
+Accept this message? [Y]es / [n]o, write my own / [q]uit:
+```
 
-### Required: OpenAI API Key
+## Features
 
-Before installation, you'll need an OpenAI API key:
+- **Commit messages**: `ai-commit` turns the staged diff into a `type(scope): description` message you can accept, rewrite or abandon.
+- **Pull request descriptions**: `ai-commit pr` summarises the branch's commits and diff into a structured, Markdown PR description.
+- **Code review**: `ai-commit review` reviews the staged changes for bugs, security issues, performance and style before you commit.
+- **Branch names**: `ai-commit branch` suggests conventional branch names from your working changes and creates the one you pick.
+- **Scriptable**: `ai-commit --print` writes the message to stdout for git hooks, editors and scripts.
+- **Secret redaction**: credentials are stripped from diffs before anything leaves your machine, and you are warned when a diff touches `.env` or key files.
+- **Bring your own model**: works with OpenAI, or with Ollama, LM Studio, vLLM and anything else that speaks the chat-completions API.
+- **Nothing lands in your working tree**: generated files go to `.git/ai-commit/`, so `git add .` can never commit them.
 
-1. **Get your API key** from: [OpenAI Platform](https://platform.openai.com/account/api-keys)
+## Installation
 
-2. **Create a `.env` file** in the project root by copying the template:
+Requires Node.js 18 or newer.
 
 ```bash
-cp .env.example .env
+npm install -g @edwin-menjivar/ai-commit
 ```
 
-3. **Add your API key** to the `.env` file:
-
-```env
-OPENAI_API_KEY=your_openai_api_key_here
-```
-
-### Optional Configuration
-
-```env
-# Optional: Specify different model (default: gpt-3.5-turbo)
-OPENAI_MODEL=gpt-4
-
-# Optional: Custom API base URL
-OPENAI_API_BASE=https://api.openai.com/v1
-```
-
-You can also override the model for a single run using the `--model <model>` flag on the CLI. If neither the flag nor the environment variable is set, the default is `gpt-3.5-turbo`.
-
-### Secret redaction
-
-Diffs are sent to a third-party API, so anything resembling a credential is replaced with `[REDACTED]`
-before the request leaves your machine. This covers provider tokens (OpenAI, GitHub, AWS, Google, Slack,
-Stripe), JWTs, private key blocks, credentials embedded in URLs, and `KEY=value` assignments whose name
-looks secret-ish. The tool also warns when the diff touches files that usually hold credentials
-(`.env`, `id_rsa`, `*.pem`, `credentials.json`, ...).
+Or run it without installing:
 
 ```bash
-$ ai-commit commit          # with a staged .env
-⚠️  The diff touches files that usually hold credentials: .env
-   Their contents are redacted before sending, but consider unstaging them.
-🔒 Redacted 2 possible secrets before sending the diff.
+npx @edwin-menjivar/ai-commit
 ```
 
-Redaction is pattern-based and cannot catch everything, so treat it as a safety net rather than a
-guarantee — avoid staging secrets in the first place. To disable it, set `AI_COMMIT_DISABLE_REDACTION=1`.
+To install from source instead:
 
-### Where generated files go
+```bash
+git clone https://github.com/edwin-menjivar/ai-commit.git
+cd ai-commit
+npm install     # builds dist/ as well
+npm link        # exposes `ai-commit` globally, pointing at this checkout
+```
 
-`ai-commit pr` and `ai-commit review` write their output to `.git/ai-commit/` rather than the working
-tree, so a later `git add .` can never sweep them into a commit. The full path is printed when a file
-is saved.
+To uninstall: `npm uninstall -g @edwin-menjivar/ai-commit` (or `npm unlink -g @edwin-menjivar/ai-commit` for a linked checkout).
 
-### Using a local LLM
+## Configuration
 
-`OPENAI_API_BASE` points the tool at any server that speaks the OpenAI chat-completions API, so your diffs never leave your machine:
+Settings are read from, in order of precedence:
+
+1. Variables exported in your shell
+2. `.env` in the current directory
+3. `~/.config/ai-commit/.env` (or `$XDG_CONFIG_HOME/ai-commit/.env`)
+
+The per-user file is the easiest for a globally installed CLI:
+
+```bash
+mkdir -p ~/.config/ai-commit
+printf 'OPENAI_API_KEY=sk-...\n' > ~/.config/ai-commit/.env
+chmod 600 ~/.config/ai-commit/.env
+```
+
+| Variable                      | Required | Default                     | Purpose                                                                                                                               |
+| ----------------------------- | -------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `OPENAI_API_KEY`              | yes      |                             | API key. Get one at [platform.openai.com](https://platform.openai.com/account/api-keys). Any non-empty value works for local servers. |
+| `OPENAI_MODEL`                | no       | `gpt-4o-mini`               | Model name. `--model` overrides it for a single run.                                                                                  |
+| `OPENAI_API_BASE`             | no       | `https://api.openai.com/v1` | Base URL of any OpenAI-compatible server.                                                                                             |
+| `AI_COMMIT_DISABLE_REDACTION` | no       |                             | Set to `1` to send diffs without stripping secrets. Not recommended.                                                                  |
+
+See [`.env.example`](.env.example) for a template.
+
+### Using a local model
+
+Point `OPENAI_API_BASE` at a local server and your diffs never leave your machine:
 
 ```env
 # Ollama
 OPENAI_API_BASE=http://localhost:11434/v1
 OPENAI_MODEL=llama3
-OPENAI_API_KEY=ollama   # required by the client, but unused by Ollama
+OPENAI_API_KEY=ollama   # required by the client, ignored by Ollama
 ```
 
-⚠️ **Important**: Never commit your `.env` file to version control. It's already included in `.gitignore`.
+LM Studio, vLLM, LocalAI and similar servers work the same way.
 
----
+## Usage
 
-## 🚀 Installation
+```
+ai-commit [command] [options]
 
-### 1. Clone the repository
+Commands:
+  commit (default)  Generate a commit message for the staged changes
+  pr                Generate a pull request description for the current branch
+  review            Review the staged changes
+  branch            Suggest branch names from the current changes
+  help              Show help
 
-```bash
-git clone https://github.com/your-username/ai-commit.git
-cd ai-commit
+Options:
+  -m, --model <model>  Model to use for this run
+  -p, --print          Print the generated commit message and exit (commit only)
+  -v, --version        Print the installed version
+  -h, --help           Show help
 ```
 
-Requires Node.js 18 or newer.
-
-### 2. Install dependencies
+### Commit messages
 
 ```bash
-npm install
-```
-
-### 3. Build the TypeScript code
-
-```bash
-npm run build
-```
-
-### 4. Link the CLI globally
-
-```bash
-npm link
-```
-
-This allows you to use `ai-commit` as a global command.
-
----
-
-## ✅ Usage
-
-### 🤖 AI Commit Messages (Default)
-
-Generate AI-powered commit messages for staged changes:
-
-```bash
-# Stage your changes
 git add .
-
-# Generate and commit with AI message
-ai-commit
-# or explicitly:
-ai-commit commit
-# Use a specific model (overrides .env for this run)
-ai-commit --model gpt-4
+ai-commit                     # or: ai-commit commit
+ai-commit --model gpt-4o      # a different model for this run
 ```
 
-### 📝 AI Pull Request Descriptions
+You are shown the message and can accept it, type your own, or quit without committing.
 
-Generate comprehensive PR descriptions from your branch commits:
+### Non-interactive use and git hooks
+
+`--print` skips the prompt and writes only the message to stdout. Warnings go to stderr, and the exit code is non-zero if nothing is staged or the model returned nothing.
 
 ```bash
-# Make sure you're on a feature branch with commits
-git checkout feature/new-login-system
+git commit -m "$(ai-commit --print)"
+```
 
-# Generate PR description
+To have git pre-fill the editor every time you run `git commit`, add a `prepare-commit-msg` hook:
+
+```sh
+#!/bin/sh
+# .git/hooks/prepare-commit-msg  (chmod +x)
+# $1 is the message file, $2 is the source. Only act on a plain `git commit`
+# so -m, --amend, merges and squashes keep their own message.
+[ -n "$2" ] && exit 0
+msg="$(ai-commit --print 2>/dev/null)" || exit 0
+printf '%s\n\n%s' "$msg" "$(cat "$1")" > "$1"
+```
+
+### Pull request descriptions
+
+```bash
+git checkout feat/new-login-system
 ai-commit pr
-# Use a specific model for PR description
-ai-commit pr --model gpt-3.5-turbo
 ```
 
-The tool will:
+Compares the branch against `main` (or `master`/`develop`, or whatever `origin/HEAD` points at), then produces a description with a title, summary, key changes, breaking changes and testing notes. You can save it to `.git/ai-commit/pr-description-<branch>.md` to paste into GitHub or GitLab.
 
-- Analyze all commits in your branch vs main/master
-- Review the full diff of changes
-- Generate a structured PR description with:
-  - Clear title and summary
-  - Key features/fixes implemented
-  - Breaking changes (if any)
-  - Testing notes
-- Save to a `.md` file for easy copy-paste to GitHub/GitLab
-
-### 🔍 AI Code Review
-
-Get AI-powered code review before committing:
+### Code review
 
 ```bash
-# Stage the changes you want reviewed
 git add .
-
-# Get AI code review
 ai-commit review
-# Use a specific model for code review
-ai-commit review --model gpt-4
 ```
 
-The AI will analyze your code for:
+Reviews the staged diff for code quality, bugs, security, performance, style and architecture, and offers to save the result to `.git/ai-commit/code-review-<timestamp>.md`.
 
-- **Code Quality**: Best practices, readability, maintainability
-- **Potential Bugs**: Logic errors, edge cases, null checks
-- **Security**: Vulnerabilities, data validation, injection risks
-- **Performance**: Inefficient operations, memory usage
-- **Style**: Consistency, naming conventions
-- **Architecture**: Design patterns, separation of concerns
-
-### 🌿 AI Branch Names
-
-Get conventional branch name suggestions from your current changes:
+### Branch names
 
 ```bash
-# Make some changes (staged or unstaged)
 ai-commit branch
 ```
 
-The tool will suggest three conventional names (e.g. `feat/user-authentication`), let you pick one or
-type your own, and then create and switch to it. If the branch already exists, it offers to switch instead.
+Suggests three conventional names such as `feat/user-authentication`, lets you pick one or type your own, and creates and switches to it. If the branch already exists it offers to switch instead.
 
-### 📋 Command Reference
+## Privacy and secret redaction
 
-```bash
-ai-commit                # Generate commit message (default)
-ai-commit commit         # Generate commit message
-ai-commit pr             # Generate pull request description
-ai-commit review         # AI code review of staged changes
-ai-commit branch         # Suggest branch names from your changes
-ai-commit help           # Show help message
-ai-commit --version      # Print the installed version
-ai-commit --model gpt-4  # Use GPT-4 for commit message
-ai-commit pr --model gpt-3.5-turbo # Use GPT-3.5 for PR description
+Diffs, commit lists and branch names are sent to the configured API endpoint. Before a request is made, anything that looks like a credential is replaced with `[REDACTED]`: provider tokens (OpenAI, GitHub, AWS, Google, Slack, Stripe), JSON Web Tokens, private key blocks, credentials embedded in URLs, and `KEY=value` assignments whose name looks secret-ish. The tool also warns when the diff touches files that usually hold credentials (`.env`, `id_rsa`, `*.pem`, `credentials.json`, ...).
+
+```
+$ ai-commit                     # with a staged .env
+⚠️  The diff touches files that usually hold credentials: .env
+   Their contents are redacted before sending, but consider unstaging them.
+🔒 Redacted 2 possible secrets before sending the diff.
 ```
 
----
+Redaction is pattern-based and cannot catch everything. Treat it as a safety net, not a guarantee, and avoid staging secrets in the first place. For full control, use a [local model](#using-a-local-model).
 
-## 🛠 Development
+Very large diffs are truncated before sending so that a big branch does not fail outright; the model is told how much was cut.
 
-Useful commands during development:
+## Troubleshooting
+
+- **`OPENAI_API_KEY is not set`**: export it in your shell or create one of the config files listed under [Configuration](#configuration). Run `ai-commit help` to see the paths.
+- **`Not in a git repository`**: every command except `help` and `--version` must be run inside a repository.
+- **`No staged changes detected`**: `commit` and `review` only look at staged changes. Run `git add` first. `branch` uses unstaged changes as well.
+- **`401` or `invalid_api_key` from the API**: the key is wrong or has been revoked. If you use a local server, make sure `OPENAI_API_BASE` ends in `/v1`.
+- **`model not found`**: the model name in `OPENAI_MODEL` or `--model` does not exist on the server you are pointing at. With Ollama, pull it first (`ollama pull llama3`).
+- **The command hangs or exits with no output**: stdin is not a terminal (for example in a script). Use `--print` for non-interactive use.
+
+## Development
 
 ```bash
-npm run build        # Compile TypeScript into dist/
-npm run typecheck    # Type-check without emitting output
-npm test             # Run the test suite
-npm run test:watch   # Re-run tests on change
-npm run test:coverage # Run tests with a coverage report
-npm start            # Run the compiled version
-npm link             # Globally symlink CLI for development use
-npm unlink -g ai-commit   # Remove global link
+npm install          # installs dependencies and builds dist/
+npm test             # Jest suite
+npm run test:watch
+npm run typecheck
+npm run lint         # ESLint
+npm run format       # Prettier
+npm run build
 ```
 
-Every push and pull request runs typecheck, build and tests on Node 18, 20 and 22 via GitHub Actions.
-
----
-
-## 📂 Project Structure
+CI runs typecheck, lint, format check, build, tests and a smoke test of the built CLI on Node 18, 20, 22 and 24.
 
 ```
 ai-commit/
-├── bin/              # CLI entry point
-│   └── ai-commit.ts  # Main CLI with subcommand support
-├── lib/              # Functional modules
-│   ├── git.ts        # Git operations (diff, commits, branches)
-│   ├── redact.ts     # Strips secrets out of diffs before sending
-│   ├── ai.ts         # OpenAI communication (commit, PR, review, branch)
-│   ├── formatter.ts  # User interaction & file output
-│   ├── prompt.ts     # Promise-based readline helpers
-│   ├── pr.ts         # Pull request description generation
-│   ├── review.ts     # Code review functionality
-│   └── branch.ts     # Branch name suggestions
-├── __tests__/        # Jest test suite
-├── dist/             # Compiled output
-├── .env              # API credentials (not committed)
-├── .env.example      # Template for .env
-├── .gitignore
-├── LICENSE
-├── README.md
-├── package.json
-└── tsconfig.json
+├── bin/ai-commit.ts    # CLI entry point: argument parsing and command routing
+├── lib/
+│   ├── ai.ts           # Prompts and the OpenAI client; all model calls go through here
+│   ├── redact.ts       # Strips secrets from diffs before they are sent
+│   ├── git.ts          # Git operations (always argv arrays, never shell strings)
+│   ├── formatter.ts    # Terminal output, prompts and saving generated files
+│   ├── prompt.ts       # Promise-based readline helpers
+│   ├── pr.ts           # `pr` command
+│   ├── review.ts       # `review` command
+│   └── branch.ts       # `branch` command
+└── __tests__/          # One test file per module
 ```
 
----
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how to propose changes, and [SECURITY.md](SECURITY.md) for reporting vulnerabilities.
 
-## 🎯 Workflow Examples
+## Roadmap
 
-### Feature Development Workflow
-
-```bash
-# 1. Create and switch to feature branch
-git checkout -b feat/user-authentication
-
-# 2. Make your changes and stage them
-git add .
-
-# 3. Get AI code review before committing
-ai-commit review
-# Or with a specific model
-ai-commit review --model gpt-4
-
-# 4. Generate and commit with AI message
-ai-commit commit
-# Or with a specific model
-ai-commit commit --model gpt-4
-
-# 5. When ready for PR, generate description
-ai-commit pr
-# Or with a specific model
-ai-commit pr --model gpt-3.5-turbo
-```
-
-### Code Review Integration
-
-```bash
-# Before any commit, get AI feedback
-git add .
-ai-commit review
-# Or with a specific model
-ai-commit review --model gpt-4
-
-# Fix any issues, then commit
-ai-commit commit
-```
-
----
-
-## 📄 License
-
-MIT License
-
-See [LICENSE](./LICENSE) for details.
-
----
-
-## 🤝 Contributing
-
-Feel free to submit issues or pull requests. Contributions are welcome!
-
----
-
-## 💡 Future Improvements
-
-- Git hook installer for automatic code review
-- VSCode or JetBrains plugin
-- Team configuration sharing
 - Custom prompt templates
-- Integration with issue trackers (Jira, Linear)
+- A `hook` command that installs the `prepare-commit-msg` hook for you
 - Automated changelog generation
-- Multi-language commit message support
+- Multi-language commit messages
+
+Ideas and pull requests are welcome; open an issue to discuss anything larger than a small fix.
+
+## License
+
+[MIT](LICENSE) © Edwin Menjivar
