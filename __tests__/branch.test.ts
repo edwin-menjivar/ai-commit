@@ -218,3 +218,42 @@ describe('Branch Module', () => {
     });
   });
 });
+
+describe('suggestBranchName in print mode', () => {
+  const mockStdout = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+  beforeEach(() => {
+    mockGit.isGitRepository.mockReturnValue(true);
+    mockGit.getCurrentBranch.mockReturnValue('main');
+    mockGit.getStagedDiff.mockReturnValue('');
+    mockGit.getUnstagedDiff.mockReturnValue('diff --git a/file.js b/file.js\n+function test() {}');
+    mockAi.generateBranchNameSuggestions.mockResolvedValue(['feat/one', 'feat/two', 'feat/three']);
+  });
+
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
+
+  afterAll(() => {
+    mockStdout.mockRestore();
+  });
+
+  it('should print the suggestions one per line without creating a branch', async () => {
+    await branchModule.suggestBranchName({ print: true });
+
+    expect(mockStdout).toHaveBeenCalledWith('feat/one\nfeat/two\nfeat/three\n');
+    expect(mockFormatter.selectBranchName).not.toHaveBeenCalled();
+    expect(mockGit.createBranch).not.toHaveBeenCalled();
+    expect(mockConsoleLog).not.toHaveBeenCalled();
+  });
+
+  it('should exit 1 with nothing on stdout when there are no changes', async () => {
+    mockGit.getUnstagedDiff.mockReturnValue('');
+    mockGit.getAllChangesDiff.mockReturnValue('');
+
+    await branchModule.suggestBranchName({ print: true });
+
+    expect(mockStdout).not.toHaveBeenCalled();
+    expect(mockProcessExit).toHaveBeenCalledWith(1);
+  });
+});

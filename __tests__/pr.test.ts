@@ -176,7 +176,9 @@ describe('PR Module', () => {
 
       await generatePRDescription();
 
-      expect(mockConsoleError).toHaveBeenCalledWith('❌ Failed to generate PR description:', aiError);
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        `❌ Failed to generate PR description: ${aiError.message}`
+      );
       expect(mockProcessExit).toHaveBeenCalledWith(1);
     });
 
@@ -186,7 +188,9 @@ describe('PR Module', () => {
 
       await generatePRDescription();
 
-      expect(mockConsoleError).toHaveBeenCalledWith('❌ Failed to generate PR description:', formatterError);
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        `❌ Failed to generate PR description: ${formatterError.message}`
+      );
       expect(mockProcessExit).toHaveBeenCalledWith(1);
     });
 
@@ -199,8 +203,7 @@ describe('PR Module', () => {
       await generatePRDescription();
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        '❌ Failed to generate PR description:',
-        expect.any(Error)
+        expect.stringContaining('❌ Failed to generate PR description: ')
       );
       expect(mockProcessExit).toHaveBeenCalledWith(1);
     });
@@ -297,5 +300,57 @@ describe('PR Module', () => {
         'bugfix/fix-memory-leak'
       );
     });
+  });
+});
+
+describe('generatePRDescription in print mode', () => {
+  const mockStdout = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
+
+  beforeEach(() => {
+    mockGit.isGitRepository.mockReturnValue(true);
+    mockGit.getCurrentBranch.mockReturnValue('feature/print');
+    mockGit.getBranchCommits.mockReturnValue('abc123 feat: add feature');
+    mockGit.getBranchDiff.mockReturnValue('diff --git a/file.js b/file.js\n+new code');
+    mockAi.generatePRDescription.mockResolvedValue('# Title\n\nBody');
+  });
+
+  afterAll(() => {
+    mockStdout.mockRestore();
+  });
+
+  it('should write the description to stdout and skip the prompt', async () => {
+    await generatePRDescription({ print: true });
+
+    expect(mockStdout).toHaveBeenCalledWith('# Title\n\nBody\n');
+    expect(mockFormatter.confirmPRDescription).not.toHaveBeenCalled();
+    expect(mockConsoleLog).not.toHaveBeenCalled();
+  });
+
+  it('should send progress to stderr', async () => {
+    await generatePRDescription({ print: true });
+
+    expect(mockConsoleError).toHaveBeenCalledWith('🤖 Generating PR description...');
+  });
+
+  it('should exit 1 with nothing on stdout when on a main branch', async () => {
+    mockGit.getCurrentBranch.mockReturnValue('main');
+
+    await generatePRDescription({ print: true });
+
+    expect(mockStdout).not.toHaveBeenCalled();
+    expect(mockProcessExit).toHaveBeenCalledWith(1);
+  });
+
+  it('should exit 1 with nothing on stdout when the branch has no commits', async () => {
+    mockGit.getBranchCommits.mockReturnValue('');
+
+    await generatePRDescription({ print: true });
+
+    expect(mockStdout).not.toHaveBeenCalled();
+    expect(mockProcessExit).toHaveBeenCalledWith(1);
   });
 });

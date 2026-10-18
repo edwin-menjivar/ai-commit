@@ -19,11 +19,14 @@ import {
 import { generateBranchNameSuggestions } from './ai';
 import { selectBranchName } from './formatter';
 import { confirm } from './prompt';
+import { CommandOptions, makeStatus, nothingToPrint } from './output';
 
 // git allows more than this, but AI-suggested names should stay conventional.
 const VALID_BRANCH_NAME = /^[a-z0-9]([a-z0-9._\-/]*[a-z0-9])?$/;
 
-export const suggestBranchName = async (): Promise<void> => {
+export const suggestBranchName = async ({ print = false }: CommandOptions = {}): Promise<void> => {
+  const status = makeStatus(print);
+
   try {
     // Check if we're in a git repository
     if (!isGitRepository()) {
@@ -36,10 +39,10 @@ export const suggestBranchName = async (): Promise<void> => {
 
     // Check if we're on a main branch
     if (['main', 'master', 'develop'].includes(currentBranch)) {
-      console.log(`ℹ️  You're on ${currentBranch}. Creating a new branch is recommended.`);
+      status(`ℹ️  You're on ${currentBranch}. Creating a new branch is recommended.`);
     }
 
-    console.log(`\n🔍 Analyzing your changes...`);
+    status(`\n🔍 Analyzing your changes...`);
 
     // Get changes - prefer unstaged, but include staged if available
     const stagedDiff = getStagedDiff();
@@ -48,25 +51,30 @@ export const suggestBranchName = async (): Promise<void> => {
     let diff: string;
     if (unstagedDiff.trim()) {
       diff = unstagedDiff;
-      console.log('📝 Found unstaged changes');
+      status('📝 Found unstaged changes');
     } else if (stagedDiff.trim()) {
       diff = stagedDiff;
-      console.log('📝 Found staged changes');
+      status('📝 Found staged changes');
     } else {
       // Try to get all changes
       diff = getAllChangesDiff();
       if (!diff.trim()) {
-        console.log('❌ No changes detected. Make some changes first, then run this command.');
-        return;
+        status('❌ No changes detected. Make some changes first, then run this command.');
+        return nothingToPrint(print);
       }
     }
 
-    console.log('🤖 Generating branch name suggestions...');
+    status('🤖 Generating branch name suggestions...');
 
     const suggestions = await generateBranchNameSuggestions(diff);
 
     if (suggestions.length === 0) {
-      console.log('❌ Failed to generate branch name suggestions.');
+      status('❌ Failed to generate branch name suggestions.');
+      return nothingToPrint(print);
+    }
+
+    if (print) {
+      process.stdout.write(`${suggestions.join('\n')}\n`);
       return;
     }
 

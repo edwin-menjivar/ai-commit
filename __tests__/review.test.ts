@@ -92,7 +92,7 @@ describe('Review Module', () => {
 
       await performCodeReview();
 
-      expect(mockConsoleError).toHaveBeenCalledWith('❌ Failed to perform code review:', aiError);
+      expect(mockConsoleError).toHaveBeenCalledWith(`❌ Failed to perform code review: ${aiError.message}`);
       expect(mockProcessExit).toHaveBeenCalledWith(1);
     });
 
@@ -102,7 +102,9 @@ describe('Review Module', () => {
 
       await performCodeReview();
 
-      expect(mockConsoleError).toHaveBeenCalledWith('❌ Failed to perform code review:', formatterError);
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        `❌ Failed to perform code review: ${formatterError.message}`
+      );
       expect(mockProcessExit).toHaveBeenCalledWith(1);
     });
 
@@ -114,7 +116,9 @@ describe('Review Module', () => {
 
       await performCodeReview();
 
-      expect(mockConsoleError).toHaveBeenCalledWith('❌ Failed to perform code review:', expect.any(Error));
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining('❌ Failed to perform code review: ')
+      );
       expect(mockProcessExit).toHaveBeenCalledWith(1);
     });
 
@@ -313,7 +317,9 @@ describe('Review Module', () => {
 
       await performCodeReview();
 
-      expect(mockConsoleError).toHaveBeenCalledWith('❌ Failed to perform code review:', timeoutError);
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        `❌ Failed to perform code review: ${timeoutError.message}`
+      );
       expect(mockProcessExit).toHaveBeenCalledWith(1);
     });
 
@@ -323,7 +329,9 @@ describe('Review Module', () => {
 
       await performCodeReview();
 
-      expect(mockConsoleError).toHaveBeenCalledWith('❌ Failed to perform code review:', rateLimitError);
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        `❌ Failed to perform code review: ${rateLimitError.message}`
+      );
       expect(mockProcessExit).toHaveBeenCalledWith(1);
     });
 
@@ -335,7 +343,7 @@ describe('Review Module', () => {
 
       await performCodeReview();
 
-      expect(mockConsoleError).toHaveBeenCalledWith('❌ Failed to perform code review:', fsError);
+      expect(mockConsoleError).toHaveBeenCalledWith(`❌ Failed to perform code review: ${fsError.message}`);
       expect(mockProcessExit).toHaveBeenCalledWith(1);
     });
 
@@ -347,8 +355,46 @@ describe('Review Module', () => {
 
       await performCodeReview();
 
-      expect(mockConsoleError).toHaveBeenCalledWith('❌ Failed to perform code review:', expect.any(Error));
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining('❌ Failed to perform code review: ')
+      );
       expect(mockProcessExit).toHaveBeenCalledWith(1);
     });
+  });
+});
+
+describe('performCodeReview in print mode', () => {
+  const mockStdout = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
+
+  beforeEach(() => {
+    mockGit.isGitRepository.mockReturnValue(true);
+    mockGit.getStagedDiff.mockReturnValue('diff --git a/file.js b/file.js\n+code');
+    mockAi.performCodeReview.mockResolvedValue('## Review\n\nLooks fine.');
+  });
+
+  afterAll(() => {
+    mockStdout.mockRestore();
+  });
+
+  it('should write the review to stdout and skip the save prompt', async () => {
+    await performCodeReview({ print: true });
+
+    expect(mockStdout).toHaveBeenCalledWith('## Review\n\nLooks fine.\n');
+    expect(mockFormatter.displayCodeReview).not.toHaveBeenCalled();
+    expect(mockConsoleLog).not.toHaveBeenCalled();
+    expect(mockConsoleError).toHaveBeenCalledWith('🤖 Performing AI code review...');
+  });
+
+  it('should exit 1 with nothing on stdout when nothing is staged', async () => {
+    mockGit.getStagedDiff.mockReturnValue('');
+
+    await performCodeReview({ print: true });
+
+    expect(mockStdout).not.toHaveBeenCalled();
+    expect(mockProcessExit).toHaveBeenCalledWith(1);
   });
 });

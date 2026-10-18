@@ -11,6 +11,7 @@ import * as formatterModule from '../lib/formatter';
 import * as prModule from '../lib/pr';
 import * as reviewModule from '../lib/review';
 import * as branchModule from '../lib/branch';
+import * as hookModule from '../lib/hook';
 import { parseArgs, runCommit, run, showHelp } from '../bin/ai-commit';
 
 // Mock all dependencies
@@ -20,6 +21,11 @@ jest.mock('../lib/formatter');
 jest.mock('../lib/pr');
 jest.mock('../lib/review');
 jest.mock('../lib/branch');
+// Keep HOOK_ACTIONS real so parseArgs can validate actions; only the runner is mocked.
+jest.mock('../lib/hook', () => ({
+  ...jest.requireActual('../lib/hook'),
+  runHookCommand: jest.fn(),
+}));
 
 const mockGit = gitModule as jest.Mocked<typeof gitModule>;
 const mockAi = aiModule as jest.Mocked<typeof aiModule>;
@@ -27,6 +33,7 @@ const mockFormatter = formatterModule as jest.Mocked<typeof formatterModule>;
 const mockPr = prModule as jest.Mocked<typeof prModule>;
 const mockReview = reviewModule as jest.Mocked<typeof reviewModule>;
 const mockBranch = branchModule as jest.Mocked<typeof branchModule>;
+const mockHook = hookModule as jest.Mocked<typeof hookModule>;
 
 const mockConsoleLog = jest.spyOn(console, 'log').mockImplementation();
 const mockConsoleError = jest.spyOn(console, 'error').mockImplementation();
@@ -54,6 +61,8 @@ describe('CLI', () => {
         command: 'commit',
         model: undefined,
         print: false,
+        yes: false,
+        hookAction: undefined,
         showVersion: false,
       });
     });
@@ -71,11 +80,11 @@ describe('CLI', () => {
     });
 
     it('should parse --model with its value', () => {
-      expect(parseArgs(['--model', 'gpt-4'])).toEqual({
+      expect(parseArgs(['--model', 'gpt-4'])).toMatchObject({
         command: 'commit',
         model: 'gpt-4',
         print: false,
-        showVersion: false,
+        yes: false,
       });
     });
 
@@ -90,11 +99,62 @@ describe('CLI', () => {
     it('should accept --print together with the explicit commit command and a model', () => {
       const result = parseArgs(['commit', '--print', '--model', 'gpt-4o']);
 
-      expect(result).toEqual({ command: 'commit', model: 'gpt-4o', print: true, showVersion: false });
+      expect(result).toMatchObject({ command: 'commit', model: 'gpt-4o', print: true });
+      expect(result.error).toBeUndefined();
     });
 
-    it.each(['pr', 'review', 'branch'])('should reject --print with the %s command', (cmd) => {
-      expect(parseArgs([cmd, '--print']).error).toBe('--print only applies to the commit command');
+    it.each(['pr', 'review', 'branch'])('should accept --print with the %s command', (cmd) => {
+      const result = parseArgs([cmd, '--print']);
+
+      expect(result.command).toBe(cmd);
+      expect(result.print).toBe(true);
+      expect(result.error).toBeUndefined();
+    });
+
+    it('should reject --print with the help command', () => {
+      expect(parseArgs(['help', '--print']).error).toBe('--print does not apply to the help command');
+    });
+
+    it('should reject --print with the hook command', () => {
+      expect(parseArgs(['hook', 'install', '--print']).error).toBe(
+        '--print does not apply to the hook command'
+      );
+    });
+
+    it.each(['--yes', '-y'])('should parse %s', (flag) => {
+      const result = parseArgs([flag]);
+
+      expect(result.yes).toBe(true);
+      expect(result.command).toBe('commit');
+      expect(result.error).toBeUndefined();
+    });
+
+    it.each(['pr', 'review', 'branch'])('should reject --yes with the %s command', (cmd) => {
+      expect(parseArgs([cmd, '--yes']).error).toBe('--yes only applies to the commit command');
+    });
+
+    it('should reject --yes combined with --print', () => {
+      expect(parseArgs(['--yes', '--print']).error).toMatch(/cannot be combined/);
+    });
+
+    it.each(['install', 'uninstall', 'show'])('should parse hook %s', (action) => {
+      const result = parseArgs(['hook', action]);
+
+      expect(result.command).toBe('hook');
+      expect(result.hookAction).toBe(action);
+      expect(result.error).toBeUndefined();
+    });
+
+    it('should require an action for hook', () => {
+      expect(parseArgs(['hook']).error).toBe('hook requires an action: install, uninstall, show');
+    });
+
+    it('should reject an unknown hook action', () => {
+      expect(parseArgs(['hook', 'frobnicate']).error).toBe('Unknown argument: frobnicate');
+    });
+
+    it('should not treat a hook action as valid for other commands', () => {
+      expect(parseArgs(['commit', 'install']).error).toBe('Unknown argument: install');
     });
 
     it('should parse a command combined with --model', () => {
@@ -151,6 +211,8 @@ describe('CLI', () => {
       const output = mockConsoleLog.mock.calls[0][0];
       expect(output).toContain('--model');
       expect(output).toContain('--print');
+      expect(output).toContain('--yes');
+      expect(output).toContain('hook');
       expect(output).toContain('--version');
     });
   });
@@ -161,8 +223,43 @@ describe('CLI', () => {
 
       expect(mockGit.getStagedDiff).toHaveBeenCalled();
       expect(mockAi.generateCommitMessage).toHaveBeenCalledWith('diff --git a/file.js b/file.js\n+test');
-      expect(mockFormatter.confirmCommitMessage).toHaveBeenCalledWith('feat: add test');
+      expect(mockFormatter.confirmCommitMessage).toHaveBeenCalledWith(
+        'feat: add test',
+        expect.objectContaining({ regenerate: expect.any(Function) })
+      );
       expect(mockGit.commitChanges).toHaveBeenCalledWith('feat: add test');
+    });
+
+    it('should offer a regenerate callback that asks the model again with the same diff', async () => {
+      mockAi.generateCommitMessage.mockResolvedValueOnce('feat: first').mockResolvedValueOnce('feat: second');
+
+      await runCommit();
+
+      const { regenerate } = mockFormatter.confirmCommitMessage.mock.calls[0][1] as {
+        regenerate: () => Promise<string>;
+      };
+      await expect(regenerate()).resolves.toBe('feat: second');
+      expect(mockAi.generateCommitMessage).toHaveBeenCalledTimes(2);
+      expect(mockAi.generateCommitMessage).toHaveBeenLastCalledWith('diff --git a/file.js b/file.js\n+test');
+    });
+
+    describe('with --yes', () => {
+      it('should commit the generated message without prompting', async () => {
+        await runCommit({ yes: true });
+
+        expect(mockFormatter.confirmCommitMessage).not.toHaveBeenCalled();
+        expect(mockGit.commitChanges).toHaveBeenCalledWith('feat: add test');
+        expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining('feat: add test'));
+      });
+
+      it('should not commit when the model returns an empty message', async () => {
+        mockAi.generateCommitMessage.mockResolvedValue('');
+
+        await runCommit({ yes: true });
+
+        expect(mockGit.commitChanges).not.toHaveBeenCalled();
+        expect(mockProcessExit).toHaveBeenCalledWith(1);
+      });
     });
 
     it('should commit the message the user edited, not the generated one', async () => {
@@ -287,8 +384,33 @@ describe('CLI', () => {
     it('should route pr to the PR generator', async () => {
       await run('pr');
 
-      expect(mockPr.generatePRDescription).toHaveBeenCalled();
+      expect(mockPr.generatePRDescription).toHaveBeenCalledWith({ print: undefined });
       expect(mockGit.commitChanges).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['pr', () => mockPr.generatePRDescription],
+      ['review', () => mockReview.performCodeReview],
+      ['branch', () => mockBranch.suggestBranchName],
+    ] as const)('should pass print mode through to %s', async (command, getMock) => {
+      await run(command, { print: true });
+
+      expect(getMock()).toHaveBeenCalledWith({ print: true });
+    });
+
+    it('should route hook to the hook command with its action', async () => {
+      await run('hook', { hookAction: 'install' });
+
+      expect(mockHook.runHookCommand).toHaveBeenCalledWith('install');
+    });
+
+    it('should refuse to run hook outside a git repository', async () => {
+      mockGit.isGitRepository.mockReturnValue(false);
+
+      await run('hook', { hookAction: 'install' });
+
+      expect(mockHook.runHookCommand).not.toHaveBeenCalled();
+      expect(mockProcessExit).toHaveBeenCalledWith(1);
     });
 
     it('should route review to the code reviewer', async () => {

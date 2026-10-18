@@ -15,19 +15,39 @@ import { ask } from './prompt';
 // Guards against an unrecognised answer looping forever on a non-interactive stdin.
 const MAX_PROMPT_ATTEMPTS = 3;
 
+export interface ConfirmOptions {
+  /** Ask the model for another message. Enables the [r]egenerate choice. */
+  regenerate?: () => Promise<string>;
+}
+
+const showCommitMessage = (message: string): void => {
+  console.log(`\n🤖 Generated commit message:`);
+  console.log(`   "${message}"\n`);
+};
+
 /**
- * Confirm, replace, or abandon the generated message.
+ * Confirm, replace, regenerate, or abandon the generated message.
  *
  * Returns null when the user declines to commit. The prompt used to treat any
  * unrecognised answer as the commit message itself, so replying "no thanks"
  * committed a message reading "no thanks"; the choices are now explicit.
  */
-export const confirmCommitMessage = async (message: string): Promise<string | null> => {
-  console.log(`\n🤖 Generated commit message:`);
-  console.log(`   "${message}"\n`);
+export const confirmCommitMessage = async (
+  initialMessage: string,
+  { regenerate }: ConfirmOptions = {}
+): Promise<string | null> => {
+  let message = initialMessage;
+  showCommitMessage(message);
 
-  for (let attempt = 0; attempt < MAX_PROMPT_ATTEMPTS; attempt++) {
-    const response = await ask('Accept this message? [Y]es / [n]o, write my own / [q]uit: ');
+  const choices = regenerate
+    ? '[Y]es / [n]o, write my own / [r]egenerate / [q]uit'
+    : '[Y]es / [n]o, write my own / [q]uit';
+
+  // Only unrecognised answers count towards the limit; regenerating is a deliberate choice.
+  let invalidAnswers = 0;
+
+  while (invalidAnswers < MAX_PROMPT_ATTEMPTS) {
+    const response = await ask(`Accept this message? ${choices}: `);
 
     if (response === null) {
       console.log('No input available. Commit cancelled.');
@@ -38,6 +58,20 @@ export const confirmCommitMessage = async (message: string): Promise<string | nu
 
     if (answer === '' || answer === 'y' || answer === 'yes') {
       return message;
+    }
+
+    if ((answer === 'r' || answer === 'regenerate') && regenerate) {
+      console.log('🤖 Generating another message...');
+      const next = await regenerate();
+
+      if (next) {
+        message = next;
+      } else {
+        console.log('The model returned an empty message; keeping the previous one.');
+      }
+
+      showCommitMessage(message);
+      continue;
     }
 
     if (answer === 'q' || answer === 'quit') {
@@ -58,7 +92,8 @@ export const confirmCommitMessage = async (message: string): Promise<string | nu
       return replacement;
     }
 
-    console.log(`Please answer y, n, or q.`);
+    console.log(`Please answer y, n, ${regenerate ? 'r, ' : ''}or q.`);
+    invalidAnswers++;
   }
 
   console.log('No valid response. Commit cancelled.');

@@ -9,8 +9,11 @@
 import { getCurrentBranch, getBranchCommits, getBranchDiff, isGitRepository } from './git';
 import { generatePRDescription as generatePRDescriptionAI } from './ai';
 import { confirmPRDescription } from './formatter';
+import { CommandOptions, makeStatus, nothingToPrint } from './output';
 
-export const generatePRDescription = async (): Promise<void> => {
+export const generatePRDescription = async ({ print = false }: CommandOptions = {}): Promise<void> => {
+  const status = makeStatus(print);
+
   try {
     // Check if we're in a git repository
     if (!isGitRepository()) {
@@ -23,44 +26,48 @@ export const generatePRDescription = async (): Promise<void> => {
 
     // Check if we're on a main branch
     if (['main', 'master', 'develop'].includes(currentBranch)) {
-      console.log(
+      status(
         '⚠️  You appear to be on a main branch. PR descriptions are typically generated from feature branches.'
       );
-      console.log(`Current branch: ${currentBranch}`);
-      console.log('Consider switching to a feature branch first.');
-      return;
+      status(`Current branch: ${currentBranch}`);
+      status('Consider switching to a feature branch first.');
+      return nothingToPrint(print);
     }
 
-    console.log(`\n🔍 Analyzing branch: ${currentBranch}`);
+    status(`\n🔍 Analyzing branch: ${currentBranch}`);
 
     // Get commits in this branch
     const commits = getBranchCommits();
 
     if (!commits.trim()) {
-      console.log('❌ No commits found in this branch compared to main branch');
-      console.log('Make sure you have commits that are not in the main branch');
-      return;
+      status('❌ No commits found in this branch compared to main branch');
+      status('Make sure you have commits that are not in the main branch');
+      return nothingToPrint(print);
     }
 
-    console.log(
-      `📝 Found ${commits.split('\n').filter((line) => line.trim()).length} commit(s) in this branch`
-    );
+    status(`📝 Found ${commits.split('\n').filter((line) => line.trim()).length} commit(s) in this branch`);
 
     // Get the full diff for this branch
-    console.log('🔍 Analyzing changes...');
+    status('🔍 Analyzing changes...');
     const diff = getBranchDiff();
 
     if (!diff.trim()) {
-      console.log('❌ No changes found in this branch');
+      status('❌ No changes found in this branch');
+      return nothingToPrint(print);
+    }
+
+    status('🤖 Generating PR description...');
+
+    const prDescription = await generatePRDescriptionAI(commits, diff, currentBranch);
+
+    if (print) {
+      process.stdout.write(`${prDescription}\n`);
       return;
     }
 
-    console.log('🤖 Generating PR description...');
-
-    const prDescription = await generatePRDescriptionAI(commits, diff, currentBranch);
     await confirmPRDescription(prDescription, currentBranch);
   } catch (error) {
-    console.error('❌ Failed to generate PR description:', error);
+    console.error(`❌ Failed to generate PR description: ${error instanceof Error ? error.message : error}`);
     process.exit(1);
   }
 };

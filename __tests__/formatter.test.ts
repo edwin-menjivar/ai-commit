@@ -472,3 +472,74 @@ describe('Formatter Module', () => {
     });
   });
 });
+
+describe('confirmCommitMessage with regenerate', () => {
+  let question: jest.Mock;
+
+  const answers = (...replies: string[]) => {
+    for (const reply of replies) {
+      question.mockImplementationOnce((_prompt: string, callback: (answer: string) => void) =>
+        callback(reply)
+      );
+    }
+  };
+
+  beforeEach(() => {
+    question = jest.fn();
+    mockReadline.createInterface.mockReturnValue({ question, close: jest.fn(), on: jest.fn() } as any);
+  });
+
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('should offer [r]egenerate only when a callback is supplied', async () => {
+    answers('y');
+    await confirmCommitMessage('feat: a');
+    expect(question.mock.calls[0][0]).not.toContain('[r]egenerate');
+
+    answers('y');
+    await confirmCommitMessage('feat: a', { regenerate: jest.fn() });
+    expect(question.mock.calls[1][0]).toContain('[r]egenerate');
+  });
+
+  it('should ask the model again and accept the new message', async () => {
+    const regenerate = jest.fn().mockResolvedValue('feat: second try');
+    answers('r', 'y');
+
+    const result = await confirmCommitMessage('feat: first try', { regenerate });
+
+    expect(regenerate).toHaveBeenCalledTimes(1);
+    expect(mockConsoleLog).toHaveBeenCalledWith('   "feat: second try"\n');
+    expect(result).toBe('feat: second try');
+  });
+
+  it('should keep the previous message when regeneration returns nothing', async () => {
+    const regenerate = jest.fn().mockResolvedValue('');
+    answers('regenerate', '');
+
+    const result = await confirmCommitMessage('feat: keep me', { regenerate });
+
+    expect(result).toBe('feat: keep me');
+    expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining('keeping the previous one'));
+  });
+
+  it('should treat r as an invalid answer when regeneration is unavailable', async () => {
+    answers('r', 'y');
+
+    const result = await confirmCommitMessage('feat: a');
+
+    expect(result).toBe('feat: a');
+    expect(mockConsoleLog).toHaveBeenCalledWith('Please answer y, n, or q.');
+  });
+
+  it('should not count regenerations towards the invalid-answer limit', async () => {
+    const regenerate = jest.fn().mockResolvedValue('feat: again');
+    answers('r', 'r', 'r', 'r', 'y');
+
+    const result = await confirmCommitMessage('feat: a', { regenerate });
+
+    expect(regenerate).toHaveBeenCalledTimes(4);
+    expect(result).toBe('feat: again');
+  });
+});

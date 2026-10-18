@@ -16,6 +16,7 @@ import { confirmCommitMessage } from '../lib/formatter';
 import { generatePRDescription } from '../lib/pr';
 import { performCodeReview } from '../lib/review';
 import { suggestBranchName } from '../lib/branch';
+import { HOOK_ACTIONS, HookAction, runHookCommand } from '../lib/hook';
 
 /** Resolve package.json from either the compiled output (dist/bin) or the sources (bin). */
 const getVersion = (): string => {
@@ -30,14 +31,20 @@ const getVersion = (): string => {
   return 'unknown';
 };
 
-const COMMANDS = ['commit', 'pr', 'review', 'branch', 'help'] as const;
+const COMMANDS = ['commit', 'pr', 'review', 'branch', 'hook', 'help'] as const;
 type Command = (typeof COMMANDS)[number];
 
-interface ParsedArgs {
+/** Commands whose result is text that --print can send to stdout. */
+const PRINTABLE: readonly Command[] = ['commit', 'pr', 'review', 'branch'];
+
+export interface ParsedArgs {
   command: Command;
   model?: string;
-  /** Print the generated commit message to stdout instead of prompting and committing. */
+  /** Print the generated text to stdout instead of prompting. */
   print: boolean;
+  /** Commit the generated message without asking. */
+  yes: boolean;
+  hookAction?: HookAction;
   showVersion: boolean;
   error?: string;
 }
@@ -47,7 +54,19 @@ export const parseArgs = (args: string[]): ParsedArgs => {
   let commandSeen = false;
   let model: string | undefined;
   let print = false;
+  let yes = false;
+  let hookAction: HookAction | undefined;
   let showVersion = false;
+
+  const result = (error?: string): ParsedArgs => ({
+    command,
+    model,
+    print,
+    yes,
+    hookAction,
+    showVersion,
+    ...(error ? { error } : {}),
+  });
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -56,12 +75,14 @@ export const parseArgs = (args: string[]): ParsedArgs => {
       const value = args[i + 1];
       // Without this check a trailing `--model` would be silently ignored.
       if (!value || value.startsWith('-')) {
-        return { command, print, showVersion, error: `${arg} requires a model name (e.g. ${arg} gpt-4o)` };
+        return result(`${arg} requires a model name (e.g. ${arg} gpt-4o)`);
       }
       model = value;
       i++;
     } else if (arg === '--print' || arg === '-p') {
       print = true;
+    } else if (arg === '--yes' || arg === '-y') {
+      yes = true;
     } else if (arg === '--version' || arg === '-v') {
       showVersion = true;
     } else if (arg === '--help' || arg === '-h') {
@@ -70,16 +91,27 @@ export const parseArgs = (args: string[]): ParsedArgs => {
     } else if ((COMMANDS as readonly string[]).includes(arg) && !commandSeen) {
       command = arg as Command;
       commandSeen = true;
+    } else if (command === 'hook' && !hookAction && (HOOK_ACTIONS as readonly string[]).includes(arg)) {
+      hookAction = arg as HookAction;
     } else {
-      return { command, model, print, showVersion, error: `Unknown argument: ${arg}` };
+      return result(`Unknown argument: ${arg}`);
     }
   }
 
-  if (print && command !== 'commit') {
-    return { command, model, print, showVersion, error: '--print only applies to the commit command' };
+  if (command === 'hook' && !hookAction) {
+    return result(`hook requires an action: ${HOOK_ACTIONS.join(', ')}`);
+  }
+  if (print && !PRINTABLE.includes(command)) {
+    return result(`--print does not apply to the ${command} command`);
+  }
+  if (yes && command !== 'commit') {
+    return result('--yes only applies to the commit command');
+  }
+  if (yes && print) {
+    return result('--yes and --print cannot be combined: --print never commits');
   }
 
-  return { command, model, print, showVersion };
+  return result();
 };
 
 export const showHelp = () => {
@@ -91,26 +123,28 @@ Usage:
 
 Commands:
   commit (default)  Generate AI-powered commit message for staged changes
-  pr               Generate pull request description from branch commits
-  review           AI code review of staged changes before commit
-  branch           Suggest branch names based on current changes
-  help             Show this help message
+  pr                Generate pull request description from branch commits
+  review            AI code review of staged changes before commit
+  branch            Suggest branch names based on current changes
+  hook <action>     Manage the prepare-commit-msg hook: install, uninstall, show
+  help              Show this help message
 
 Options:
   -m, --model <model>  Model to use (overrides OPENAI_MODEL)
-  -p, --print          Print the generated commit message to stdout and exit
-                       without committing (for hooks, editors and scripts)
+  -p, --print          Print the generated text to stdout and exit without
+                       prompting or committing (for hooks, editors and scripts)
+  -y, --yes            Commit the generated message without asking
   -v, --version        Print the installed version
   -h, --help           Show this help message
 
 Examples:
   ai-commit                      # Generate commit message (default)
-  ai-commit commit               # Generate commit message
+  ai-commit --yes                # Generate and commit without confirming
   ai-commit pr                   # Generate PR description
-  ai-commit review               # Review staged changes
+  ai-commit review --print       # Review staged changes, output to stdout
   ai-commit branch               # Suggest branch names from changes
+  ai-commit hook install         # Pre-fill git commit messages in this repo
   ai-commit --model gpt-4o       # Use a specific model for this run
-  ai-commit --print              # Just print the message, e.g. from a git hook
   git commit -m "$(ai-commit --print)"
 
 Configuration:
@@ -127,9 +161,11 @@ const fail = (error: unknown): never => {
 
 export interface RunOptions {
   print?: boolean;
+  yes?: boolean;
+  hookAction?: HookAction;
 }
 
-export const runCommit = async ({ print = false }: RunOptions = {}) => {
+export const runCommit = async ({ print = false, yes = false }: RunOptions = {}) => {
   try {
     const diff = getStagedDiff();
 
@@ -159,7 +195,15 @@ export const runCommit = async ({ print = false }: RunOptions = {}) => {
       return;
     }
 
-    const finalMessage = await confirmCommitMessage(aiMessage);
+    if (yes) {
+      console.log(`🤖 Committing with message: "${aiMessage}"`);
+      commitChanges(aiMessage);
+      return;
+    }
+
+    const finalMessage = await confirmCommitMessage(aiMessage, {
+      regenerate: () => generateCommitMessage(diff),
+    });
 
     if (finalMessage === null) {
       return; // User declined to commit.
@@ -172,7 +216,7 @@ export const runCommit = async ({ print = false }: RunOptions = {}) => {
 };
 
 // help and --version are the only things that work outside a repository.
-const REQUIRES_REPOSITORY: Command[] = ['commit', 'pr', 'review', 'branch'];
+const REQUIRES_REPOSITORY: Command[] = ['commit', 'pr', 'review', 'branch', 'hook'];
 
 export const run = async (command: Command, options: RunOptions = {}): Promise<void> => {
   if (REQUIRES_REPOSITORY.includes(command) && !isGitRepository()) {
@@ -185,18 +229,21 @@ export const run = async (command: Command, options: RunOptions = {}): Promise<v
     case 'commit':
       return runCommit(options);
     case 'pr':
-      return generatePRDescription();
+      return generatePRDescription({ print: options.print });
     case 'review':
-      return performCodeReview();
+      return performCodeReview({ print: options.print });
     case 'branch':
-      return suggestBranchName();
+      return suggestBranchName({ print: options.print });
+    case 'hook':
+      // parseArgs guarantees an action; the fallback only keeps the type checker honest.
+      return runHookCommand(options.hookAction ?? 'show');
     case 'help':
       return showHelp();
   }
 };
 
 const main = async () => {
-  const { command, model, print, showVersion, error } = parseArgs(process.argv.slice(2));
+  const { command, model, print, yes, hookAction, showVersion, error } = parseArgs(process.argv.slice(2));
 
   if (error) {
     console.error(`❌ ${error}\n`);
@@ -214,7 +261,7 @@ const main = async () => {
   }
 
   try {
-    await run(command, { print });
+    await run(command, { print, yes, hookAction });
   } catch (err) {
     fail(err);
   }
