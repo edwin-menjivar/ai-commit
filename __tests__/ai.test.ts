@@ -33,6 +33,7 @@ import {
   generatePRDescription,
   performCodeReview,
   generateBranchNameSuggestions,
+  describeApiError,
   resetClient,
 } from '../lib/ai';
 
@@ -544,5 +545,117 @@ describe('AI Module', () => {
 
       await expect(generateBranchNameSuggestions('diff')).resolves.toEqual([]);
     });
+  });
+});
+
+describe('generated file exclusion', () => {
+  const lockfile =
+    'diff --git a/package-lock.json b/package-lock.json\n--- a/package-lock.json\n+++ b/package-lock.json\n+  "version": "9.9.9"\n';
+  const source =
+    'diff --git a/src/app.ts b/src/app.ts\n--- a/src/app.ts\n+++ b/src/app.ts\n+export const x = 1;\n';
+  const getPrompt = (): string => mockChatCompletions.create.mock.calls[0][0].messages[0].content;
+
+  beforeEach(() => {
+    process.env.OPENAI_API_KEY = 'test-api-key';
+    mockChatCompletions.create.mockResolvedValue({ choices: [{ message: { content: 'chore: bump deps' } }] });
+  });
+
+  afterEach(() => {
+    jest.clearAllMocks();
+    resetClient();
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.AI_COMMIT_EXCLUDE;
+    delete process.env.AI_COMMIT_DISABLE_EXCLUDES;
+  });
+
+  it('should leave lockfile contents out of the prompt but keep the source change', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation();
+
+    await generateCommitMessage(lockfile + source);
+
+    expect(getPrompt()).not.toContain('"version": "9.9.9"');
+    expect(getPrompt()).toContain('diff --git a/package-lock.json b/package-lock.json');
+    expect(getPrompt()).toContain('export const x = 1;');
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('package-lock.json'));
+    warn.mockRestore();
+  });
+
+  it('should honour AI_COMMIT_EXCLUDE', async () => {
+    process.env.AI_COMMIT_EXCLUDE = 'src/*.ts';
+    jest.spyOn(console, 'warn').mockImplementation();
+
+    await generateCommitMessage(source);
+
+    expect(getPrompt()).not.toContain('export const x = 1;');
+  });
+
+  it('should send everything when excludes are disabled', async () => {
+    process.env.AI_COMMIT_DISABLE_EXCLUDES = '1';
+
+    await generateCommitMessage(lockfile);
+
+    expect(getPrompt()).toContain('"version": "9.9.9"');
+  });
+});
+
+describe('describeApiError', () => {
+  afterEach(() => {
+    delete process.env.OPENAI_API_BASE;
+    delete process.env.OPENAI_MODEL;
+    delete process.env.AI_COMMIT_TIMEOUT_MS;
+  });
+
+  it('should point at the key for a 401', () => {
+    expect(describeApiError({ status: 401 }).message).toMatch(/OPENAI_API_KEY/);
+  });
+
+  it('should name the model and endpoint for a 404', () => {
+    process.env.OPENAI_MODEL = 'llama3';
+    process.env.OPENAI_API_BASE = 'http://localhost:11434/v1';
+
+    const message = describeApiError({ status: 404 }).message;
+
+    expect(message).toContain('llama3');
+    expect(message).toContain('http://localhost:11434/v1');
+  });
+
+  it('should explain rate limits and server errors', () => {
+    expect(describeApiError({ status: 429 }).message).toMatch(/rate limiting|quota/);
+    expect(describeApiError({ status: 503 }).message).toMatch(/server error \(503\)/);
+  });
+
+  it('should suggest the timeout setting when the request timed out', () => {
+    class APIConnectionTimeoutError extends Error {}
+    process.env.AI_COMMIT_TIMEOUT_MS = '5000';
+
+    const message = describeApiError(new APIConnectionTimeoutError('timeout')).message;
+
+    expect(message).toContain('5000 ms');
+    expect(message).toContain('AI_COMMIT_TIMEOUT_MS');
+  });
+
+  it('should recognise a refused connection by code or class', () => {
+    class APIConnectionError extends Error {}
+
+    expect(describeApiError({ code: 'ECONNREFUSED' }).message).toMatch(/Could not connect/);
+    expect(describeApiError({ cause: { code: 'ENOTFOUND' } }).message).toMatch(/Could not connect/);
+    expect(describeApiError(new APIConnectionError('boom')).message).toMatch(/Could not connect/);
+  });
+
+  it('should pass unknown errors through unchanged', () => {
+    const original = new Error('something odd');
+
+    expect(describeApiError(original)).toBe(original);
+    expect(describeApiError('plain string').message).toBe('plain string');
+  });
+
+  it('should be applied to failures from the API client', async () => {
+    process.env.OPENAI_API_KEY = 'test-api-key';
+    mockChatCompletions.create.mockRejectedValue(Object.assign(new Error('raw'), { status: 401 }));
+
+    await expect(generateCommitMessage('diff --git a/f b/f\n+x')).rejects.toThrow(/OPENAI_API_KEY/);
+
+    resetClient();
+    delete process.env.OPENAI_API_KEY;
   });
 });

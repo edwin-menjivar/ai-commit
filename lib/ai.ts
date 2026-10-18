@@ -12,12 +12,24 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { redactSecrets, findSensitivePaths } from './redact';
+import { filterDiff, configuredExcludes } from './diff';
 
 // Models reject oversized requests outright, so trim very large diffs rather
 // than letting the whole command fail on a big branch.
 const MAX_DIFF_CHARS = 48_000;
 
 const DEFAULT_MODEL = 'gpt-4o-mini';
+
+// Local models on modest hardware can take a while on a large diff, so this is
+// generous. AI_COMMIT_TIMEOUT_MS overrides it.
+const DEFAULT_TIMEOUT_MS = 120_000;
+
+const getTimeoutMs = (): number => {
+  const value = Number(process.env.AI_COMMIT_TIMEOUT_MS);
+  return Number.isFinite(value) && value > 0 ? value : DEFAULT_TIMEOUT_MS;
+};
+
+const getBaseUrl = (): string => process.env.OPENAI_API_BASE || 'https://api.openai.com/v1';
 
 /**
  * Per-user config file, for a globally installed CLI that has no "project
@@ -73,6 +85,8 @@ const getClient = (): OpenAI => {
       apiKey,
       // Set OPENAI_API_BASE to point at a local or self-hosted OpenAI-compatible server.
       baseURL: process.env.OPENAI_API_BASE || undefined,
+      timeout: getTimeoutMs(),
+      maxRetries: 2,
     });
   }
 
@@ -99,14 +113,29 @@ const truncateDiff = (diff: string): string => {
 /** True unless the user has explicitly opted out of redaction. */
 const redactionEnabled = (): boolean => process.env.AI_COMMIT_DISABLE_REDACTION !== '1';
 
+/** Leave generated files (lockfiles, bundles, source maps) out of the diff. */
+const excludeGeneratedFiles = (diff: string): string => {
+  const { text, omitted } = filterDiff(diff, configuredExcludes());
+
+  if (omitted.length > 0) {
+    console.warn(
+      `ℹ️  Left the contents of ${omitted.length} generated file${omitted.length === 1 ? '' : 's'} out of the diff: ${omitted.join(', ')}`
+    );
+  }
+
+  return text;
+};
+
 /**
- * Strip credentials, then trim to size.
+ * Drop generated files, strip credentials, then trim to size.
  *
  * Diffs are sent to a third-party API, so anything that looks like a secret is
- * replaced first. Redaction runs before truncation so a secret can never be
- * carried along in the kept portion of an oversized diff.
+ * replaced before truncation, so a secret can never be carried along in the
+ * kept portion of an oversized diff.
  */
-const prepareDiff = (diff: string): string => {
+const prepareDiff = (rawDiff: string): string => {
+  const diff = excludeGeneratedFiles(rawDiff);
+
   if (!redactionEnabled()) {
     console.warn('⚠️  Secret redaction is disabled (AI_COMMIT_DISABLE_REDACTION=1).');
     return truncateDiff(diff);
@@ -128,17 +157,73 @@ const prepareDiff = (diff: string): string => {
   return truncateDiff(text);
 };
 
+/**
+ * Turn an SDK error into a message that says what to fix.
+ *
+ * Duck-typed on `status`, `code` and the class name rather than instanceof, so
+ * it also works when the SDK is mocked or a different client is swapped in.
+ */
+export const describeApiError = (error: unknown): Error => {
+  const err = (error ?? {}) as {
+    status?: number;
+    code?: string;
+    cause?: { code?: string };
+    constructor?: { name?: string };
+  };
+  const status = err.status;
+  const code = err.code ?? err.cause?.code;
+  const kind = err.constructor?.name;
+  const base = getBaseUrl();
+
+  if (status === 401) {
+    return new Error('The API rejected the key (401 Unauthorized). Check OPENAI_API_KEY.');
+  }
+  if (status === 403) {
+    return new Error(
+      `The API refused the request (403 Forbidden). The key may not have access to model "${getModel()}".`
+    );
+  }
+  if (status === 404) {
+    return new Error(
+      `Model "${getModel()}" was not found at ${base} (404). Check OPENAI_MODEL, or pull the model if you run a local server.`
+    );
+  }
+  if (status === 429) {
+    return new Error(
+      'The API is rate limiting this key or it is out of quota (429). Wait a moment and try again.'
+    );
+  }
+  if (status !== undefined && status >= 500) {
+    return new Error(`The API at ${base} returned a server error (${status}). Try again in a little while.`);
+  }
+  if (kind === 'APIConnectionTimeoutError') {
+    return new Error(
+      `The request to ${base} timed out after ${getTimeoutMs()} ms. Set AI_COMMIT_TIMEOUT_MS to wait longer, or try a smaller diff.`
+    );
+  }
+  if (kind === 'APIConnectionError' || code === 'ECONNREFUSED' || code === 'ENOTFOUND') {
+    return new Error(`Could not connect to ${base}. Is the server running, and is OPENAI_API_BASE correct?`);
+  }
+
+  return error instanceof Error ? error : new Error(String(error));
+};
+
 /** Send a prompt and return the trimmed text of the first choice. */
 const complete = async (
   prompt: string,
   options: { temperature: number; maxTokens: number }
 ): Promise<string> => {
-  const response = await getClient().chat.completions.create({
-    model: getModel(),
-    messages: [{ role: 'user', content: prompt }],
-    temperature: options.temperature,
-    max_tokens: options.maxTokens,
-  });
+  let response;
+  try {
+    response = await getClient().chat.completions.create({
+      model: getModel(),
+      messages: [{ role: 'user', content: prompt }],
+      temperature: options.temperature,
+      max_tokens: options.maxTokens,
+    });
+  } catch (error) {
+    throw describeApiError(error);
+  }
 
   return response.choices?.[0]?.message?.content?.trim() || '';
 };
