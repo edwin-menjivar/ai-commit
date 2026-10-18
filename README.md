@@ -13,17 +13,19 @@ $ ai-commit
 🤖 Generated commit message:
    "feat(auth): add password reset flow"
 
-Accept this message? [Y]es / [n]o, write my own / [q]uit:
+Accept this message? [Y]es / [n]o, write my own / [r]egenerate / [q]uit:
 ```
 
 ## Features
 
-- **Commit messages**: `ai-commit` turns the staged diff into a `type(scope): description` message you can accept, rewrite or abandon.
+- **Commit messages**: `ai-commit` turns the staged diff into a `type(scope): description` message you can accept, rewrite, regenerate or abandon. `--yes` skips the question.
+- **Git hook**: `ai-commit hook install` makes every `git commit` open the editor with a suggested message already filled in.
 - **Pull request descriptions**: `ai-commit pr` summarises the branch's commits and diff into a structured, Markdown PR description.
 - **Code review**: `ai-commit review` reviews the staged changes for bugs, security issues, performance and style before you commit.
 - **Branch names**: `ai-commit branch` suggests conventional branch names from your working changes and creates the one you pick.
-- **Scriptable**: `ai-commit --print` writes the message to stdout for git hooks, editors and scripts.
+- **Scriptable**: `--print` writes the result to stdout for any command, so it works in hooks, editors, scripts and CI.
 - **Secret redaction**: credentials are stripped from diffs before anything leaves your machine, and you are warned when a diff touches `.env` or key files.
+- **Lean diffs**: lockfiles, minified bundles and source maps are left out of what is sent, so the model sees your change and not three thousand lines of `package-lock.json`.
 - **Bring your own model**: works with OpenAI, or with Ollama, LM Studio, vLLM and anything else that speaks the chat-completions API.
 - **Nothing lands in your working tree**: generated files go to `.git/ai-commit/`, so `git add .` can never commit them.
 
@@ -73,6 +75,9 @@ chmod 600 ~/.config/ai-commit/.env
 | `OPENAI_API_KEY`              | yes      |                             | API key. Get one at [platform.openai.com](https://platform.openai.com/account/api-keys). Any non-empty value works for local servers. |
 | `OPENAI_MODEL`                | no       | `gpt-4o-mini`               | Model name. `--model` overrides it for a single run.                                                                                  |
 | `OPENAI_API_BASE`             | no       | `https://api.openai.com/v1` | Base URL of any OpenAI-compatible server.                                                                                             |
+| `AI_COMMIT_TIMEOUT_MS`        | no       | `120000`                    | How long to wait for the model. Raise it for slow local models.                                                                       |
+| `AI_COMMIT_EXCLUDE`           | no       |                             | Comma-separated globs for extra files to leave out of the diff, e.g. `dist/**,*.snap`. See [Lean diffs](#lean-diffs).                 |
+| `AI_COMMIT_DISABLE_EXCLUDES`  | no       |                             | Set to `1` to send every file, lockfiles included.                                                                                    |
 | `AI_COMMIT_DISABLE_REDACTION` | no       |                             | Set to `1` to send diffs without stripping secrets. Not recommended.                                                                  |
 
 See [`.env.example`](.env.example) for a template.
@@ -88,7 +93,7 @@ OPENAI_MODEL=llama3
 OPENAI_API_KEY=ollama   # required by the client, ignored by Ollama
 ```
 
-LM Studio, vLLM, LocalAI and similar servers work the same way.
+LM Studio, vLLM, LocalAI and similar servers work the same way. If a large diff times out, raise `AI_COMMIT_TIMEOUT_MS`.
 
 ## Usage
 
@@ -100,11 +105,13 @@ Commands:
   pr                Generate a pull request description for the current branch
   review            Review the staged changes
   branch            Suggest branch names from the current changes
+  hook <action>     Manage the prepare-commit-msg hook: install, uninstall, show
   help              Show help
 
 Options:
   -m, --model <model>  Model to use for this run
-  -p, --print          Print the generated commit message and exit (commit only)
+  -p, --print          Print the result to stdout and exit, without prompting
+  -y, --yes            Commit the generated message without asking (commit only)
   -v, --version        Print the installed version
   -h, --help           Show help
 ```
@@ -114,29 +121,33 @@ Options:
 ```bash
 git add .
 ai-commit                     # or: ai-commit commit
+ai-commit --yes               # commit straight away with the generated message
 ai-commit --model gpt-4o      # a different model for this run
 ```
 
-You are shown the message and can accept it, type your own, or quit without committing.
+You are shown the message and can accept it, type your own, ask for another one, or quit without committing.
 
-### Non-interactive use and git hooks
+### Git hook
 
-`--print` skips the prompt and writes only the message to stdout. Warnings go to stderr, and the exit code is non-zero if nothing is staged or the model returned nothing.
+To have every `git commit` open your editor with a suggested message already in place:
 
 ```bash
-git commit -m "$(ai-commit --print)"
+ai-commit hook install        # writes .git/hooks/prepare-commit-msg (honours core.hooksPath)
+ai-commit hook uninstall      # removes it again
+ai-commit hook show           # prints the script, to merge into an existing hook
 ```
 
-To have git pre-fill the editor every time you run `git commit`, add a `prepare-commit-msg` hook:
+The hook only acts on a plain `git commit`: `-m`, `--amend`, merges and squashes keep their own message. Set `AI_COMMIT_SKIP=1` to bypass it for one commit. If the model is unreachable the hook silently falls back to a normal empty editor. The installer refuses to overwrite a `prepare-commit-msg` hook it did not write, and `uninstall` refuses to delete one.
 
-```sh
-#!/bin/sh
-# .git/hooks/prepare-commit-msg  (chmod +x)
-# $1 is the message file, $2 is the source. Only act on a plain `git commit`
-# so -m, --amend, merges and squashes keep their own message.
-[ -n "$2" ] && exit 0
-msg="$(ai-commit --print 2>/dev/null)" || exit 0
-printf '%s\n\n%s' "$msg" "$(cat "$1")" > "$1"
+### Scripting with --print
+
+`--print` skips every prompt and writes only the result to stdout. Progress and warnings go to stderr, and the exit code is non-zero when there is nothing to produce, such as no staged changes.
+
+```bash
+git commit -m "$(ai-commit --print)"          # commit message
+ai-commit review --print > review.md          # code review as Markdown
+ai-commit pr --print | gh pr create --body-file - --title "..."
+ai-commit branch --print                      # three names, one per line
 ```
 
 ### Pull request descriptions
@@ -178,16 +189,27 @@ $ ai-commit                     # with a staged .env
 
 Redaction is pattern-based and cannot catch everything. Treat it as a safety net, not a guarantee, and avoid staging secrets in the first place. For full control, use a [local model](#using-a-local-model).
 
-Very large diffs are truncated before sending so that a big branch does not fail outright; the model is told how much was cut.
+### Lean diffs
+
+Generated files say nothing a commit message or review needs beyond "this changed", so their contents are left out of the diff and replaced with a one-line stub. By default that covers common lockfiles (`package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `Cargo.lock`, `poetry.lock`, `Gemfile.lock`, `go.sum`, ...), `*.min.js`, `*.min.css` and `*.map`. Add your own patterns with `AI_COMMIT_EXCLUDE`; a pattern without a slash matches a filename anywhere, one with a slash matches the path from the repository root, and `**` spans directories.
+
+```
+ℹ️  Left the contents of 1 generated file out of the diff: package-lock.json
+```
+
+Very large diffs are also truncated before sending so that a big branch does not fail outright; the model is told how much was cut.
 
 ## Troubleshooting
 
 - **`OPENAI_API_KEY is not set`**: export it in your shell or create one of the config files listed under [Configuration](#configuration). Run `ai-commit help` to see the paths.
+- **`The API rejected the key (401 Unauthorized)`**: the key is wrong or has been revoked. If you use a local server, make sure `OPENAI_API_BASE` ends in `/v1`.
+- **`Model "..." was not found`**: the model name in `OPENAI_MODEL` or `--model` does not exist on the server you are pointing at. With Ollama, pull it first (`ollama pull llama3`).
+- **`Could not connect to ...`**: the server behind `OPENAI_API_BASE` is not running or the URL is wrong.
+- **`The request ... timed out`**: a local model is taking longer than `AI_COMMIT_TIMEOUT_MS`. Raise it, or stage a smaller change.
 - **`Not in a git repository`**: every command except `help` and `--version` must be run inside a repository.
 - **`No staged changes detected`**: `commit` and `review` only look at staged changes. Run `git add` first. `branch` uses unstaged changes as well.
-- **`401` or `invalid_api_key` from the API**: the key is wrong or has been revoked. If you use a local server, make sure `OPENAI_API_BASE` ends in `/v1`.
-- **`model not found`**: the model name in `OPENAI_MODEL` or `--model` does not exist on the server you are pointing at. With Ollama, pull it first (`ollama pull llama3`).
-- **The command hangs or exits with no output**: stdin is not a terminal (for example in a script). Use `--print` for non-interactive use.
+- **The command hangs or exits with no output**: stdin is not a terminal (for example in a script). Use `--print` or `--yes` for non-interactive use.
+- **The hook did nothing**: `ai-commit` must be on the `PATH` that git sees, and the hook only runs for a plain `git commit` without `-m`. Run `ai-commit --print` by hand to see any error.
 
 ## Development
 
@@ -209,12 +231,15 @@ ai-commit/
 ├── lib/
 │   ├── ai.ts           # Prompts and the OpenAI client; all model calls go through here
 │   ├── redact.ts       # Strips secrets from diffs before they are sent
+│   ├── diff.ts         # Leaves generated files (lockfiles, bundles) out of the diff
 │   ├── git.ts          # Git operations (always argv arrays, never shell strings)
 │   ├── formatter.ts    # Terminal output, prompts and saving generated files
 │   ├── prompt.ts       # Promise-based readline helpers
+│   ├── output.ts       # Keeps stdout clean in --print mode
 │   ├── pr.ts           # `pr` command
 │   ├── review.ts       # `review` command
-│   └── branch.ts       # `branch` command
+│   ├── branch.ts       # `branch` command
+│   └── hook.ts         # `hook` command: prepare-commit-msg installer
 └── __tests__/          # One test file per module
 ```
 
@@ -223,7 +248,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for how to propose changes, and [SECURITY
 ## Roadmap
 
 - Custom prompt templates
-- A `hook` command that installs the `prepare-commit-msg` hook for you
+- Commit message bodies for larger changes
 - Automated changelog generation
 - Multi-language commit messages
 
