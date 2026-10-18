@@ -7,6 +7,7 @@
  */
 
 import { execFileSync } from 'child_process';
+import * as path from 'path';
 
 // Diffs of a whole branch routinely exceed execFile's 1 MB default, which would
 // otherwise fail with ENOBUFS on anything but a small change set.
@@ -138,6 +139,11 @@ export const checkoutBranch = (branchName: string): void => {
  */
 export const getGitDir = (): string => {
   return git(['rev-parse', '--absolute-git-dir']).trim();
+};
+
+/** Absolute path to the hooks directory, honouring core.hooksPath and worktrees. */
+export const getHooksDir = (): string => {
+  return path.resolve(git(['rev-parse', '--git-path', 'hooks']).trim());
 };
 
 export const branchExists = (branchName: string): boolean => {

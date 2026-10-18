@@ -16,6 +16,7 @@ import {
   createBranch,
   checkoutBranch,
   branchExists,
+  getHooksDir,
 } from '../lib/git';
 
 // Mock child_process
@@ -414,5 +415,26 @@ describe('Git Operations', () => {
 
       expect(branchExists('feat/login')).toBe(false);
     });
+  });
+});
+
+describe('getHooksDir', () => {
+  it('should resolve the hooks path git reports, honouring core.hooksPath', () => {
+    mockedExecFileSync.mockReturnValue('.git/hooks\n');
+
+    const result = getHooksDir();
+
+    expect(mockedExecFileSync).toHaveBeenCalledWith(
+      'git',
+      ['rev-parse', '--git-path', 'hooks'],
+      expect.objectContaining({ encoding: 'utf8' })
+    );
+    expect(result).toBe(`${process.cwd()}/.git/hooks`);
+  });
+
+  it('should keep an absolute path as is', () => {
+    mockedExecFileSync.mockReturnValue('/custom/hooks\n');
+
+    expect(getHooksDir()).toBe('/custom/hooks');
   });
 });
