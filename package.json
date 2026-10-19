@@ -1,38 +1,70 @@
 {
-  "name": "ai-commit",
+  "name": "@edwin-menjivar/ai-commit",
   "version": "1.0.0",
-  "description": "AI-powered Git workflow assistant",
+  "description": "AI-powered git assistant: commit messages, PR descriptions, code reviews and branch names from your diff",
   "main": "dist/bin/ai-commit.js",
   "bin": {
     "ai-commit": "./dist/bin/ai-commit.js"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "build": "tsc",
+    "typecheck": "tsc --noEmit",
     "start": "node dist/bin/ai-commit.js",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "prepare": "npm run build",
+    "prepublishOnly": "npm run typecheck && npm run lint && npm test && npm run build"
   },
   "keywords": [
     "git",
     "ai",
     "commit",
+    "commit-message",
+    "pull-request",
+    "code-review",
     "openai",
+    "ollama",
     "cli"
   ],
   "author": "Edwin Menjivar",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/edwin-menjivar/ai-commit.git"
+  },
+  "bugs": {
+    "url": "https://github.com/edwin-menjivar/ai-commit/issues"
+  },
+  "homepage": "https://github.com/edwin-menjivar/ai-commit#readme",
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
-    "commander": "^11.1.0",
     "dotenv": "^16.4.5",
     "openai": "^4.47.1"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
     "@types/jest": "^29.5.8",
     "@types/node": "^20.12.5",
+    "eslint": "^9.39.5",
     "jest": "^29.7.0",
+    "prettier": "^3.9.9",
     "ts-jest": "^29.1.1",
-    "typescript": "^5.4.3"
+    "typescript": "^5.4.3",
+    "typescript-eslint": "^8.71.1"
   },
   "jest": {
     "preset": "ts-jest",

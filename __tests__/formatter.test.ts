@@ -4,11 +4,8 @@
 
 import * as readline from 'readline';
 import * as fs from 'fs';
-import {
-    confirmCommitMessage,
-    confirmPRDescription,
-    displayCodeReview
-} from '../lib/formatter';
+import * as gitModule from '../lib/git';
+import { confirmCommitMessage, confirmPRDescription, displayCodeReview } from '../lib/formatter';
 
 // Mock readline
 jest.mock('readline');
@@ -18,6 +15,14 @@ const mockReadline = readline as jest.Mocked<typeof readline>;
 jest.mock('fs');
 const mockFs = fs as jest.Mocked<typeof fs>;
 
+// Mock git so the output directory is deterministic
+jest.mock('../lib/git');
+const mockGit = gitModule as jest.Mocked<typeof gitModule>;
+
+// Generated files live in .git/ai-commit, not the working tree
+const GIT_DIR = '/repo/.git';
+const OUT_DIR = `${GIT_DIR}/ai-commit`;
+
 // Mock console methods
 const mockConsoleLog = jest.spyOn(console, 'log').mockImplementation();
 const mockConsoleError = jest.spyOn(console, 'error').mockImplementation();
@@ -26,16 +31,20 @@ describe('Formatter Module', () => {
   let mockRlInterface: {
     question: jest.MockedFunction<any>;
     close: jest.MockedFunction<any>;
+    on: jest.MockedFunction<any>;
   };
 
   beforeEach(() => {
     mockRlInterface = {
       question: jest.fn(),
-      close: jest.fn()
+      close: jest.fn(),
+      on: jest.fn(),
     };
 
     mockReadline.createInterface.mockReturnValue(mockRlInterface as any);
-    
+
+    mockGit.getGitDir.mockReturnValue(GIT_DIR);
+
     // Mock process.cwd()
     jest.spyOn(process, 'cwd').mockReturnValue('/current/directory');
   });
@@ -47,10 +56,12 @@ describe('Formatter Module', () => {
   describe('confirmCommitMessage', () => {
     it('should accept message when user types "y"', async () => {
       const testMessage = 'feat: add new feature';
-      
-      mockRlInterface.question.mockImplementationOnce((_prompt: string, callback: (answer: string) => void) => {
-        callback('y');
-      });
+
+      mockRlInterface.question.mockImplementationOnce(
+        (_prompt: string, callback: (answer: string) => void) => {
+          callback('y');
+        }
+      );
 
       const result = await confirmCommitMessage(testMessage);
 
@@ -62,10 +73,12 @@ describe('Formatter Module', () => {
 
     it('should accept message when user types "yes"', async () => {
       const testMessage = 'fix: resolve bug';
-      
-      mockRlInterface.question.mockImplementationOnce((_prompt: string, callback: (answer: string) => void) => {
-        callback('yes');
-      });
+
+      mockRlInterface.question.mockImplementationOnce(
+        (_prompt: string, callback: (answer: string) => void) => {
+          callback('yes');
+        }
+      );
 
       const result = await confirmCommitMessage(testMessage);
 
@@ -74,10 +87,12 @@ describe('Formatter Module', () => {
 
     it('should accept message when user presses enter (empty input)', async () => {
       const testMessage = 'docs: update readme';
-      
-      mockRlInterface.question.mockImplementationOnce((_prompt: string, callback: (answer: string) => void) => {
-        callback('');
-      });
+
+      mockRlInterface.question.mockImplementationOnce(
+        (_prompt: string, callback: (answer: string) => void) => {
+          callback('');
+        }
+      );
 
       const result = await confirmCommitMessage(testMessage);
 
@@ -87,7 +102,7 @@ describe('Formatter Module', () => {
     it('should prompt for new message when user types "n"', async () => {
       const testMessage = 'original message';
       const newMessage = 'custom message';
-      
+
       mockRlInterface.question
         .mockImplementationOnce((_prompt: string, callback: (answer: string) => void) => {
           callback('n');
@@ -105,7 +120,7 @@ describe('Formatter Module', () => {
     it('should prompt for new message when user types "no"', async () => {
       const testMessage = 'original message';
       const newMessage = 'different message';
-      
+
       mockRlInterface.question
         .mockImplementationOnce((_prompt: string, callback: (answer: string) => void) => {
           callback('no');
@@ -119,22 +134,48 @@ describe('Formatter Module', () => {
       expect(result).toBe(newMessage);
     });
 
-    it('should use custom message when user types directly', async () => {
+    it('should re-prompt instead of committing an unrecognised answer', async () => {
+      // "no thanks" used to be taken as the commit message itself.
       const testMessage = 'original message';
-      const customMessage = 'custom: my own message';
-      
-      mockRlInterface.question.mockImplementationOnce((_prompt: string, callback: (answer: string) => void) => {
-        callback(customMessage);
-      });
+
+      mockRlInterface.question
+        .mockImplementationOnce((_prompt: string, callback: (answer: string) => void) => {
+          callback('no thanks');
+        })
+        .mockImplementationOnce((_prompt: string, callback: (answer: string) => void) => {
+          callback('y');
+        });
 
       const result = await confirmCommitMessage(testMessage);
 
-      expect(result).toBe(customMessage);
+      expect(mockConsoleLog).toHaveBeenCalledWith('Please answer y, n, or q.');
+      expect(result).toBe(testMessage);
     });
 
-    it('should handle empty custom message by falling back to original', async () => {
+    it('should give up after repeated invalid answers rather than loop', async () => {
+      mockRlInterface.question.mockImplementation((_prompt: string, callback: (answer: string) => void) => {
+        callback('what?');
+      });
+
+      const result = await confirmCommitMessage('original message');
+
+      expect(result).toBeNull();
+    });
+
+    it.each(['q', 'quit'])('should cancel the commit when the user types %p', async (answer) => {
+      mockRlInterface.question.mockImplementationOnce((_prompt: string, callback: (a: string) => void) => {
+        callback(answer);
+      });
+
+      const result = await confirmCommitMessage('original message');
+
+      expect(result).toBeNull();
+      expect(mockConsoleLog).toHaveBeenCalledWith('Commit cancelled.');
+    });
+
+    it('should cancel rather than reuse a message the user rejected', async () => {
       const testMessage = 'original message';
-      
+
       mockRlInterface.question
         .mockImplementationOnce((_prompt: string, callback: (answer: string) => void) => {
           callback('n');
@@ -145,7 +186,8 @@ describe('Formatter Module', () => {
 
       const result = await confirmCommitMessage(testMessage);
 
-      expect(result).toBe(testMessage);
+      expect(result).toBeNull();
+      expect(mockConsoleLog).toHaveBeenCalledWith('No message provided. Commit cancelled.');
     });
   });
 
@@ -153,10 +195,12 @@ describe('Formatter Module', () => {
     it('should save PR description when user types "y"', async () => {
       const description = '# Feature\n\nAdded new functionality';
       const branchName = 'feature/new-feature';
-      
-      mockRlInterface.question.mockImplementationOnce((_prompt: string, callback: (answer: string) => void) => {
-        callback('y');
-      });
+
+      mockRlInterface.question.mockImplementationOnce(
+        (_prompt: string, callback: (answer: string) => void) => {
+          callback('y');
+        }
+      );
 
       await confirmPRDescription(description, branchName);
 
@@ -164,19 +208,23 @@ describe('Formatter Module', () => {
       expect(mockConsoleLog).toHaveBeenCalledWith('='.repeat(60));
       expect(mockConsoleLog).toHaveBeenCalledWith(description);
       expect(mockFs.writeFileSync).toHaveBeenCalledWith(
-        '/current/directory/pr-description-feature-new-feature.md',
+        `${OUT_DIR}/pr-description-feature-new-feature.md`,
         description
       );
-      expect(mockConsoleLog).toHaveBeenCalledWith('✅ PR description saved to: pr-description-feature-new-feature.md');
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        `✅ PR description saved to: ${OUT_DIR}/pr-description-feature-new-feature.md`
+      );
     });
 
     it('should save PR description when user types "yes"', async () => {
       const description = 'PR content';
       const branchName = 'feature/test';
-      
-      mockRlInterface.question.mockImplementationOnce((_prompt: string, callback: (answer: string) => void) => {
-        callback('yes');
-      });
+
+      mockRlInterface.question.mockImplementationOnce(
+        (_prompt: string, callback: (answer: string) => void) => {
+          callback('yes');
+        }
+      );
 
       await confirmPRDescription(description, branchName);
 
@@ -186,10 +234,12 @@ describe('Formatter Module', () => {
     it('should save PR description when user presses enter', async () => {
       const description = 'PR content';
       const branchName = 'feature/test';
-      
-      mockRlInterface.question.mockImplementationOnce((_prompt: string, callback: (answer: string) => void) => {
-        callback('');
-      });
+
+      mockRlInterface.question.mockImplementationOnce(
+        (_prompt: string, callback: (answer: string) => void) => {
+          callback('');
+        }
+      );
 
       await confirmPRDescription(description, branchName);
 
@@ -199,28 +249,34 @@ describe('Formatter Module', () => {
     it('should create edit file when user types "edit"', async () => {
       const description = 'PR content';
       const branchName = 'feature/test';
-      
-      mockRlInterface.question.mockImplementationOnce((_prompt: string, callback: (answer: string) => void) => {
-        callback('edit');
-      });
+
+      mockRlInterface.question.mockImplementationOnce(
+        (_prompt: string, callback: (answer: string) => void) => {
+          callback('edit');
+        }
+      );
 
       await confirmPRDescription(description, branchName);
 
       expect(mockFs.writeFileSync).toHaveBeenCalledWith(
-        '/current/directory/pr-description-feature-test.md',
+        `${OUT_DIR}/pr-description-feature-test.md`,
         description
       );
-      expect(mockConsoleLog).toHaveBeenCalledWith('📝 PR description saved to: pr-description-feature-test.md');
-      expect(mockConsoleLog).toHaveBeenCalledWith('Edit the file and run the command again if needed.');
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        `✅ PR description saved to: ${OUT_DIR}/pr-description-feature-test.md`
+      );
+      expect(mockConsoleLog).toHaveBeenCalledWith('Open the file above to edit it.');
     });
 
     it('should not save when user types "n"', async () => {
       const description = 'PR content';
       const branchName = 'feature/test';
-      
-      mockRlInterface.question.mockImplementationOnce((_prompt: string, callback: (answer: string) => void) => {
-        callback('n');
-      });
+
+      mockRlInterface.question.mockImplementationOnce(
+        (_prompt: string, callback: (answer: string) => void) => {
+          callback('n');
+        }
+      );
 
       await confirmPRDescription(description, branchName);
 
@@ -231,10 +287,12 @@ describe('Formatter Module', () => {
     it('should handle file write errors', async () => {
       const description = 'PR content';
       const branchName = 'feature/test';
-      
-      mockRlInterface.question.mockImplementationOnce((_prompt: string, callback: (answer: string) => void) => {
-        callback('y');
-      });
+
+      mockRlInterface.question.mockImplementationOnce(
+        (_prompt: string, callback: (answer: string) => void) => {
+          callback('y');
+        }
+      );
 
       mockFs.writeFileSync.mockImplementationOnce(() => {
         throw new Error('Permission denied');
@@ -242,21 +300,23 @@ describe('Formatter Module', () => {
 
       await confirmPRDescription(description, branchName);
 
-      expect(mockConsoleError).toHaveBeenCalledWith('❌ Failed to save PR description: Error: Permission denied');
+      expect(mockConsoleError).toHaveBeenCalledWith('❌ Failed to save PR description: Permission denied');
     });
 
     it('should sanitize branch name for filename', async () => {
       const description = 'PR content';
       const branchName = 'feature/test-branch/with-slashes';
-      
-      mockRlInterface.question.mockImplementationOnce((_prompt: string, callback: (answer: string) => void) => {
-        callback('y');
-      });
+
+      mockRlInterface.question.mockImplementationOnce(
+        (_prompt: string, callback: (answer: string) => void) => {
+          callback('y');
+        }
+      );
 
       await confirmPRDescription(description, branchName);
 
       expect(mockFs.writeFileSync).toHaveBeenCalledWith(
-        '/current/directory/pr-description-feature-test-branch-with-slashes.md',
+        `${OUT_DIR}/pr-description-feature-test-branch-with-slashes.md`,
         description
       );
     });
@@ -265,10 +325,12 @@ describe('Formatter Module', () => {
   describe('displayCodeReview', () => {
     it('should display code review and save when user types "y"', async () => {
       const review = '## Code Review\n\nLooks good!';
-      
-      mockRlInterface.question.mockImplementationOnce((_prompt: string, callback: (answer: string) => void) => {
-        callback('y');
-      });
+
+      mockRlInterface.question.mockImplementationOnce(
+        (_prompt: string, callback: (answer: string) => void) => {
+          callback('y');
+        }
+      );
 
       // Mock date for consistent filename
       const mockDate = new Date('2023-01-01T12:00:00.000Z');
@@ -280,18 +342,22 @@ describe('Formatter Module', () => {
       expect(mockConsoleLog).toHaveBeenCalledWith('='.repeat(60));
       expect(mockConsoleLog).toHaveBeenCalledWith(review);
       expect(mockFs.writeFileSync).toHaveBeenCalledWith(
-        '/current/directory/code-review-2023-01-01T12-00-00-000Z.md',
+        `${OUT_DIR}/code-review-2023-01-01T12-00-00-000Z.md`,
         review
       );
-      expect(mockConsoleLog).toHaveBeenCalledWith('✅ Code review saved to: code-review-2023-01-01T12-00-00-000Z.md');
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        `✅ Code review saved to: ${OUT_DIR}/code-review-2023-01-01T12-00-00-000Z.md`
+      );
     });
 
     it('should display code review and save when user types "yes"', async () => {
       const review = 'Review content';
-      
-      mockRlInterface.question.mockImplementationOnce((_prompt: string, callback: (answer: string) => void) => {
-        callback('yes');
-      });
+
+      mockRlInterface.question.mockImplementationOnce(
+        (_prompt: string, callback: (answer: string) => void) => {
+          callback('yes');
+        }
+      );
 
       await displayCodeReview(review);
 
@@ -300,10 +366,12 @@ describe('Formatter Module', () => {
 
     it('should not save when user types "n"', async () => {
       const review = 'Review content';
-      
-      mockRlInterface.question.mockImplementationOnce((_prompt: string, callback: (answer: string) => void) => {
-        callback('n');
-      });
+
+      mockRlInterface.question.mockImplementationOnce(
+        (_prompt: string, callback: (answer: string) => void) => {
+          callback('n');
+        }
+      );
 
       await displayCodeReview(review);
 
@@ -313,10 +381,12 @@ describe('Formatter Module', () => {
 
     it('should handle file write errors for code review', async () => {
       const review = 'Review content';
-      
-      mockRlInterface.question.mockImplementationOnce((_prompt: string, callback: (answer: string) => void) => {
-        callback('y');
-      });
+
+      mockRlInterface.question.mockImplementationOnce(
+        (_prompt: string, callback: (answer: string) => void) => {
+          callback('y');
+        }
+      );
 
       mockFs.writeFileSync.mockImplementationOnce(() => {
         throw new Error('Disk full');
@@ -324,21 +394,25 @@ describe('Formatter Module', () => {
 
       await displayCodeReview(review);
 
-      expect(mockConsoleError).toHaveBeenCalledWith('❌ Failed to save code review: Error: Disk full');
+      expect(mockConsoleError).toHaveBeenCalledWith('❌ Failed to save Code review: Disk full');
     });
 
     it('should generate unique timestamps for review filenames', async () => {
       const review = 'Review content';
-      
-      mockRlInterface.question.mockImplementationOnce((_prompt: string, callback: (answer: string) => void) => {
-        callback('y');
-      });
+
+      mockRlInterface.question.mockImplementationOnce(
+        (_prompt: string, callback: (answer: string) => void) => {
+          callback('y');
+        }
+      );
 
       await displayCodeReview(review);
 
       // Check that the filename follows the expected pattern
       expect(mockFs.writeFileSync).toHaveBeenCalledWith(
-        expect.stringMatching(/\/current\/directory\/code-review-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z\.md$/),
+        expect.stringMatching(
+          /\/repo\/\.git\/ai-commit\/code-review-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z\.md$/
+        ),
         review
       );
     });
@@ -347,41 +421,47 @@ describe('Formatter Module', () => {
   describe('Readline interface management', () => {
     it('should create and close readline interface properly', async () => {
       const testMessage = 'test message';
-      
-      mockRlInterface.question.mockImplementationOnce((_prompt: string, callback: (answer: string) => void) => {
-        callback('y');
-      });
+
+      mockRlInterface.question.mockImplementationOnce(
+        (_prompt: string, callback: (answer: string) => void) => {
+          callback('y');
+        }
+      );
 
       await confirmCommitMessage(testMessage);
 
       expect(mockReadline.createInterface).toHaveBeenCalledWith({
         input: process.stdin,
-        output: process.stdout
+        output: process.stdout,
       });
       expect(mockRlInterface.close).toHaveBeenCalled();
     });
 
     it('should handle multiple readline interfaces for complex flows', async () => {
       const testMessage = 'test message';
-      
+
       // First interface for initial question
-      mockRlInterface.question.mockImplementationOnce((_prompt: string, callback: (answer: string) => void) => {
-        callback('n');
-      });
+      mockRlInterface.question.mockImplementationOnce(
+        (_prompt: string, callback: (answer: string) => void) => {
+          callback('n');
+        }
+      );
 
       // Second interface for new message
       const secondInterface = {
         question: jest.fn(),
-        close: jest.fn()
+        close: jest.fn(),
       };
-      
+
       mockReadline.createInterface
         .mockReturnValueOnce(mockRlInterface as any)
         .mockReturnValueOnce(secondInterface as any);
 
-      secondInterface.question.mockImplementationOnce((_prompt: string, callback: (answer: string) => void) => {
-        callback('new message');
-      });
+      secondInterface.question.mockImplementationOnce(
+        (_prompt: string, callback: (answer: string) => void) => {
+          callback('new message');
+        }
+      );
 
       const result = await confirmCommitMessage(testMessage);
 
@@ -391,4 +471,75 @@ describe('Formatter Module', () => {
       expect(result).toBe('new message');
     });
   });
-}); 
+});
+
+describe('confirmCommitMessage with regenerate', () => {
+  let question: jest.Mock;
+
+  const answers = (...replies: string[]) => {
+    for (const reply of replies) {
+      question.mockImplementationOnce((_prompt: string, callback: (answer: string) => void) =>
+        callback(reply)
+      );
+    }
+  };
+
+  beforeEach(() => {
+    question = jest.fn();
+    mockReadline.createInterface.mockReturnValue({ question, close: jest.fn(), on: jest.fn() } as any);
+  });
+
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('should offer [r]egenerate only when a callback is supplied', async () => {
+    answers('y');
+    await confirmCommitMessage('feat: a');
+    expect(question.mock.calls[0][0]).not.toContain('[r]egenerate');
+
+    answers('y');
+    await confirmCommitMessage('feat: a', { regenerate: jest.fn() });
+    expect(question.mock.calls[1][0]).toContain('[r]egenerate');
+  });
+
+  it('should ask the model again and accept the new message', async () => {
+    const regenerate = jest.fn().mockResolvedValue('feat: second try');
+    answers('r', 'y');
+
+    const result = await confirmCommitMessage('feat: first try', { regenerate });
+
+    expect(regenerate).toHaveBeenCalledTimes(1);
+    expect(mockConsoleLog).toHaveBeenCalledWith('   "feat: second try"\n');
+    expect(result).toBe('feat: second try');
+  });
+
+  it('should keep the previous message when regeneration returns nothing', async () => {
+    const regenerate = jest.fn().mockResolvedValue('');
+    answers('regenerate', '');
+
+    const result = await confirmCommitMessage('feat: keep me', { regenerate });
+
+    expect(result).toBe('feat: keep me');
+    expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining('keeping the previous one'));
+  });
+
+  it('should treat r as an invalid answer when regeneration is unavailable', async () => {
+    answers('r', 'y');
+
+    const result = await confirmCommitMessage('feat: a');
+
+    expect(result).toBe('feat: a');
+    expect(mockConsoleLog).toHaveBeenCalledWith('Please answer y, n, or q.');
+  });
+
+  it('should not count regenerations towards the invalid-answer limit', async () => {
+    const regenerate = jest.fn().mockResolvedValue('feat: again');
+    answers('r', 'r', 'r', 'r', 'y');
+
+    const result = await confirmCommitMessage('feat: a', { regenerate });
+
+    expect(regenerate).toHaveBeenCalledTimes(4);
+    expect(result).toBe('feat: again');
+  });
+});
