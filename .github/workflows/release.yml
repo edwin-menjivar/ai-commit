@@ -3,7 +3,14 @@
 #   npm version minor          # bumps package.json, commits and tags
 #   git push --follow-tags
 #
-# Requires an npm automation token stored as the NPM_TOKEN repository secret.
+# Requires an npm automation token stored as NPM_TOKEN in the "release"
+# environment. That environment only admits runs triggered by v* tags, so the
+# token is never exposed to any other workflow run.
+#
+# Once the package exists on npm, prefer trusted publishing (OIDC) over a
+# token: configure this repository and workflow file as a trusted publisher
+# in the package's npm settings, remove NPM_TOKEN, and drop the
+# NODE_AUTH_TOKEN line below. The id-token permission is already granted.
 name: Release
 
 on:
@@ -17,6 +24,9 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    environment:
+      name: release
+      url: https://www.npmjs.com/package/@edwin-menjivar/ai-commit
 
     steps:
       - uses: actions/checkout@v4
